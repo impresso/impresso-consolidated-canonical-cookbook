@@ -1,52 +1,113 @@
-# Impresso Make-Based Processing Template
+# Impresso Consolidated Canonical Processing Pipeline
 
-This repository provides a template for creating new processing pipelines within the Impresso project ecosystem. It demonstrates best practices for building scalable, distributed newspaper processing workflows using Make, Python, and S3 storage.
+This repository provides a Make-based processing pipeline for creating consolidated canonical newspaper data within the Impresso project ecosystem. It demonstrates best practices for building scalable, distributed newspaper processing workflows that merge canonical data with language identification and OCR quality assessment enrichments.
 
 ## Table of Contents
 
 - [Overview](#overview)
-- [Template Structure](#template-structure)
+- [Processing Pipeline](#processing-pipeline)
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
-- [Running the Template](#running-the-template)
-- [Adapting to Your Processing Pipeline](#adapting-to-your-processing-pipeline)
+- [Running the Pipeline](#running-the-pipeline)
+- [Data Requirements](#data-requirements)
 - [Build System](#build-system)
 - [Contributing](#contributing)
 - [About Impresso](#about-impresso)
 
 ## Overview
 
-This template provides a complete framework for building newspaper processing pipelines that:
+This pipeline consolidates canonical newspaper data with language identification and OCR quality assessment enrichments to produce **consolidated canonical format** as defined in the Impresso schema (`issue.schema.json`).
 
-- **Scale Horizontally**: Process data across multiple machines without conflicts
-- **Handle Large Datasets**: Efficiently process large collections using S3 and local stamp files
-- **Maintain Consistency**: Ensure reproducible results with proper dependency management
-- **Support Parallel Processing**: Utilize multi-core systems and distributed computing
-- **Integrate with S3**: Seamlessly work with both local files and S3 storage
+### What is Consolidation?
 
-## Template Structure
+Consolidation merges:
+
+- **Canonical newspaper issues** (from `s3://112-canonical-final/`)
+- **Language identification results** (from `s3://115-canonical-processed-final/langident/`)
+- **OCR quality assessment scores** (included in langident results)
+
+Into a unified format that includes:
+
+- `consolidated_lg`: Computed language per content item
+- `consolidated_ocrqa`: OCR quality score (0-1 range)
+- `consolidated_langident_run_id`: Provenance tracking
+- `consolidated_ts_original`: Original creation timestamp
+- `lg_original`: Renamed from original `lg` field (if existed)
+
+### Pipeline Features
+
+- **Strict Matching**: Requires exact 1:1 correspondence between canonical content items and enrichment data
+- **Horizontal Scalability**: Process data across multiple machines without conflicts
+- **Large Dataset Handling**: Efficiently process large collections using S3 and local stamp files
+- **Reproducibility**: Ensure reproducible results with proper dependency management and versioning
+- **Parallel Processing**: Utilize multi-core systems and distributed computing
+- **S3 Integration**: Seamlessly work with both local files and S3 storage
+
+## Processing Pipeline
+
+### Input Data
+
+1. **Canonical Issues** (`s3://112-canonical-final/`):
+
+   ```
+   s3://112-canonical-final/PROVIDER/NEWSPAPER/issues/NEWSPAPER-YEAR-issues.jsonl.bz2
+   ```
+
+   - Contains newspaper issues with content items (articles, ads, images, etc.)
+   - Organized by data provider (e.g., BL, SWA, NZZ)
+   - Format: JSONL (one issue per line)
+
+2. **Langident/OCRQA Enrichments** (`s3://115-canonical-processed-final/`):
+   ```
+   s3://115-canonical-processed-final/langident/langident-lid-ensemble_multilingual_v2-0-2/PROVIDER/NEWSPAPER/NEWSPAPER-YEAR.jsonl.bz2
+   ```
+   - Contains per-content-item language identification and OCR quality scores
+   - Organized by data provider matching canonical structure
+   - Format: JSONL (one content item per line)
+
+### Processing Steps
+
+1. **Data Synchronization**:
+
+   - Downloads canonical issues from S3
+   - Downloads langident/OCRQA enrichments from S3
+   - Uses stamp files to track sync status
+
+2. **Consolidation**:
+
+   - For each issue file:
+     - Loads all enrichment data into memory
+     - Reads each issue line-by-line
+     - For each content item:
+       - Validates enrichment data exists (strict matching)
+       - Renames `lg` → `lg_original`
+       - Adds `consolidated_lg`, `consolidated_ocrqa`, `consolidated_langident_run_id`
+     - Updates issue-level metadata:
+       - Sets `consolidated = true`
+       - Stores original `ts` in `consolidated_ts_original`
+       - Updates `ts` to processing timestamp
+     - Writes consolidated issue to output
+
+3. **Output Upload**:
+   - Uploads consolidated canonical files to S3
+   - Preserves logs for troubleshooting
+
+### Output Data
+
+**Consolidated Canonical Issues** (`s3://118-canonical-consolidated-final/`):
 
 ```
-├── README.md                   # This file
-├── Makefile                    # Main build configuration
-├── .env                        # Environment variables (create manually from dotenv.sample)
-├── dotenv.sample               # Sample environment configuration
-├── Pipfile                     # Python dependencies
-├── lib/
-│   └── cli_TEMPLATE.py         # Template CLI script
-├── cookbook/                   # Build system components
-│   ├── README.md               # Detailed cookbook documentation
-│   ├── setup_TEMPLATE.mk       # Template-specific setup
-│   ├── paths_TEMPLATE.mk       # Path definitions
-│   ├── sync_TEMPLATE.mk        # Data synchronization
-│   ├── processing_TEMPLATE.mk  # Processing targets
-│   └── ...                     # Other cookbook components
-└── build.d/                    # Local build directory (auto-created)
+s3://118-canonical-consolidated-final/VERSION/PROVIDER/NEWSPAPER/NEWSPAPER-YEAR-issues.jsonl.bz2
 ```
+
+- Format: JSONL (one issue per line)
+- Schema: Conforms to `issue.schema.json` with `consolidated=true`
+- Versioning: Uses date-based versioning (e.g., `v2025-11-23_initial`)
+- Organization: Mirrors canonical structure with VERSION prefix
 
 ## Quick Start
 
-Follow these steps to get started with the template:
+Follow these steps to get started with the consolidation pipeline:
 
 ### 1. Prerequisites
 
@@ -103,8 +164,19 @@ brew install make git git-lfs parallel coreutils python3
    ```
 
 4. **Initialize the environment:**
+
    ```bash
    make setup
+   ```
+
+5. **Create a configuration file (optional but recommended):**
+
+   ```bash
+   # Copy the sample configuration
+   cp config.sample.mk config.local.mk
+
+   # Edit config.local.mk with your settings
+   # Set PROVIDER, NEWSPAPER, version identifiers, etc.
    ```
 
 ### 3. Verify Installation
@@ -118,6 +190,70 @@ make help
 You should see available targets and configuration options.
 
 ## Configuration
+
+The pipeline can be configured in multiple ways, with increasing priority:
+
+1. **Default values** in the Makefile includes
+2. **Environment variables** from `.env` file
+3. **Configuration file** (e.g., `config.local.mk`)
+4. **Command-line arguments** to `make`
+
+### Using Configuration Files
+
+Configuration files provide a convenient way to manage different processing scenarios:
+
+```bash
+# Use default config.local.mk (if exists)
+make newspaper PROVIDER=BL NEWSPAPER=WTCH
+
+# Use a specific configuration file
+make newspaper CFG=config.production.mk
+
+# Use configuration file with command-line overrides
+make newspaper CFG=config.bl.mk NEWSPAPER=AATA
+```
+
+**Create your configuration file:**
+
+```bash
+# Copy the sample
+cp config.sample.mk config.local.mk
+
+# Edit with your settings
+vim config.local.mk
+```
+
+The configuration file can set any variable, including:
+
+- `PROVIDER` and `NEWSPAPER` defaults
+- S3 bucket names
+- Version identifiers
+- Parallelization settings
+- Logging levels
+
+**Example configuration files:**
+
+```makefile
+# config.bl.mk - British Library newspapers
+PROVIDER := BL
+LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
+RUN_VERSION_consolidatedcanonical := v2025-11-23_BL
+COLLECTION_JOBS := 4
+
+# config.production.mk - Production settings
+PROVIDER := BL
+S3_BUCKET_consolidatedcanonical := 118-canonical-consolidated-final
+RUN_VERSION_consolidatedcanonical := v2025-11-23_production
+LOGGING_LEVEL := INFO
+COLLECTION_JOBS := 8
+MAX_LOAD := 16
+```
+
+See `config.sample.mk` for a complete list of configurable variables.
+
+## Environment Variables
+
+## Environment Variables
 
 Before running any processing, configure your environment:
 
@@ -135,63 +271,131 @@ SE_HOST_URL=https://os.zhdk.cloud.switch.ch/
 LOGGING_LEVEL=INFO
 ```
 
-### Optional Processing Variables
+### Processing Configuration
 
-These can be set in `.env` as shell variables (propagate to make) or passed as command
-arguments to make:
+These can be set in `.env` as shell variables or passed as command arguments to make:
 
-- `NEWSPAPER`: Target newspaper to process
+**Required Variables:**
+
+- `PROVIDER`: Data provider organization (e.g., `BL`, `SWA`, `NZZ`)
+  - Can be omitted if `NEWSPAPER` includes provider prefix (e.g., `BL/WTCH`)
+- `NEWSPAPER`: Target newspaper to process (e.g., `WTCH`, `actionfem`, or `BL/WTCH`)
+
+**Filtering Variables:**
+
+- `USE_CANONICAL`: Always set to `1` for consolidated canonical processing (default: `1`)
+- `NEWSPAPER_HAS_PROVIDER`: Set to `1` if data organized as `PROVIDER/NEWSPAPER` (default: `1`)
+- `NEWSPAPER_FNMATCH`: Pattern to filter newspapers for collection processing
+  - Examples: `BL/*` (all BL newspapers), `SWA/*`, `*/WTCH`, `BL/AATA`
+  - Leave empty to process all newspapers
+
+**Optional Processing Variables:**
+
 - `BUILD_DIR`: Local build directory (default: `build.d`)
-- `NEWSPAPER_YEAR_SORTING`: Processing order (`shuf` for random, `cat` for
-  chronological) of the years within a newspaper
+- `RUN_VERSION_consolidatedcanonical`: Version identifier (default: `v2025-11-23_initial`)
+- `LANGIDENT_ENRICHMENT_RUN_ID`: Langident run to use (default: `langident-lid-ensemble_multilingual_v2-0-2`)
 - `NPROC`: Number of CPU cores (auto-detected if not set)
-- `NEWSPAPER_JOBS`: Number of parallel jobs per newspaper processing (derived: NPROC ÷ COLLECTION_JOBS)
-- `COLLECTION_JOBS`: Number of newspapers to process in parallel within a collection (default: 2)
+- `NEWSPAPER_JOBS`: Number of parallel jobs per newspaper
+- `COLLECTION_JOBS`: Number of newspapers to process in parallel (default: 2)
 - `MAX_LOAD`: Maximum system load (default: NPROC)
 
 ### S3 Bucket Configuration
 
-Configure S3 buckets in your paths file:
+Configure S3 buckets in your paths file or via environment variables:
 
-- `S3_BUCKET_REBUILT`: Input data bucket (default: `22-rebuilt-final`)
-- `S3_BUCKET_TEMPLATE`: Output data bucket (default: `140-processed-data-sandbox`)
+- `S3_BUCKET_CANONICAL`: Canonical input data bucket (default: `112-canonical-final`)
+- `S3_BUCKET_LANGIDENT_ENRICHMENT`: Enrichment data bucket (default: `115-canonical-processed-final`)
+- `S3_BUCKET_consolidatedcanonical`: Output data bucket (default: `118-canonical-consolidated-final`)
 
-## Running the Template
+## Running the Pipeline
 
-### Test the Template Processing
+### Understanding Sync Targets
 
-Process a small newspaper to verify everything works:
+The pipeline provides three sync targets for different purposes:
+
+- **`sync-input`**: Downloads **source data** needed for processing
+
+  - Canonical issues from `s3://112-canonical-final/`
+  - Langident enrichments from `s3://115-canonical-processed-final/`
+  - Run this before processing to ensure you have the latest input data
+
+- **`sync-output`**: Downloads **already-processed results** from S3 to local
+
+  - Consolidated canonical files from `s3://118-canonical-consolidated-final/`
+  - Useful for inspection, verification, or resuming interrupted work
+  - Does NOT reprocess data, only downloads existing files
+
+- **`sync`**: Downloads **both input and output** data
+  - Equivalent to running both `sync-input` and `sync-output`
+
+**Note:** The `processing-target` automatically syncs input data (`sync-canonical` and `sync-langident`) before processing, so you typically don't need to run `sync-input` manually.
+
+### Process a Single Newspaper
+
+Process a newspaper to consolidate its canonical data with enrichments:
 
 ```bash
-# Test with a smaller newspaper first
-make newspaper NEWSPAPER=actionfem
+# Process a specific newspaper (PROVIDER and NEWSPAPER required)
+make newspaper PROVIDER=BL NEWSPAPER=WTCH
 ```
 
-### Processing Options
+### Step-by-Step Processing
 
-**Process a single newspaper (all years):**
+**1. Sync input data (optional - processing-target does this automatically):**
 
 ```bash
-make newspaper NEWSPAPER=actionfem
+# Download canonical issues and langident enrichments
+make sync-input PROVIDER=BL NEWSPAPER=WTCH
 ```
 
-**Step-by-step processing:**
-
-1. **Sync data:**
-
-   ```bash
-   make sync NEWSPAPER=actionfem
-   ```
-
-2. **Run processing:**
-   ```bash
-   make processing-target NEWSPAPER=actionfem
-   ```
-
-**Process multiple newspapers:**
+**2. Run consolidation processing:**
 
 ```bash
-make collection COLLECTION_JOBS=4
+# Process and upload results (automatically syncs input first)
+make processing-target PROVIDER=BL NEWSPAPER=WTCH
+```
+
+**3. Sync output data (optional - for inspection/verification):**
+
+```bash
+# Download already-consolidated results from S3
+make sync-output PROVIDER=BL NEWSPAPER=WTCH
+```
+
+### Process Multiple Newspapers
+
+Process collections of newspapers using filtering patterns:
+
+```bash
+# Process all British Library newspapers
+make collection NEWSPAPER_FNMATCH="BL/*" COLLECTION_JOBS=4
+
+# Process all Swiss newspapers
+make collection NEWSPAPER_FNMATCH="SWA/*" COLLECTION_JOBS=4
+
+# Process specific newspaper across all providers
+make collection NEWSPAPER_FNMATCH="*/WTCH" COLLECTION_JOBS=2
+
+# Process all newspapers (use with caution - may be very large)
+make collection COLLECTION_JOBS=8
+
+# Use a configuration file for complex setups
+make collection CFG=config.bl.mk
+```
+
+### Flexible Provider Handling
+
+The pipeline supports newspapers with or without provider prefixes:
+
+```bash
+# NEWSPAPER includes provider prefix
+make newspaper NEWSPAPER=BL/WTCH
+
+# NEWSPAPER and PROVIDER set separately
+make newspaper PROVIDER=BL NEWSPAPER=WTCH
+
+# For collections: filter by provider pattern
+make collection NEWSPAPER_FNMATCH="BL/*"
 ```
 
 ### Available Commands
@@ -204,54 +408,76 @@ make help
 
 # Show current configuration
 make config
+
+# Clean local build directory
+make clean-build
 ```
 
-## Adapting to Your Processing Pipeline
+## Data Requirements
 
-Once you've verified the template works, adapt it to your specific processing needs:
+### Strict Matching Policy
 
-### 1. Choose Your Processing Acronym
+The consolidation pipeline implements **strict matching**:
 
-Decide on a short acronym for your new pipeline (e.g., `myimpressopipeline`):
+- Every content item in a canonical issue **MUST** have corresponding enrichment data
+- If any content item is missing from the enrichment file, processing **exits with an error**
+- This ensures data consistency and prevents partial consolidation
 
-```bash
-export PROCESSING_ACRONYM=myimpressopipeline
-make -f cookbook/template-starter.mk
+### Expected Data Structure
+
+**Canonical Issues:**
+
+```json
+{
+  "id": "WTCH-1828-01-06-a",
+  "ts": "2024-01-15T10:30:00Z",
+  "i": [
+    {
+      "m": {
+        "id": "WTCH-1828-01-06-a-i0001",
+        "tp": "article",
+        "lg": "en",
+        ...
+      }
+    }
+  ]
+}
 ```
 
-This will create adapted files with your acronym:
+**Langident Enrichments:**
 
-```
-├── README.md                   # This file
-├── Makefile.myimpressopipeline # Main build configuration adapted for myimpressopipeline
-├── .env                        # Environment variables (create manually from dotenv.sample)
-├── dotenv.sample               # Sample environment configuration
-├── Pipfile                     # Python dependencies
-├── lib/
-│   └── cli_myimpressopipeline.py         # Template CLI script adapted for myimpressopipeline
-├── cookbook/                   # Build system components
-│   ├── README.md               # Detailed cookbook documentation
-│   ├── setup_myimpressopipeline.mk       # myimpressopipeline-specific setup
-│   ├── paths_myimpressopipeline.mk       # Path definitions
-│   ├── sync_myimpressopipeline.mk        # Data synchronization
-│   ├── processing_myimpressopipeline.mk  # Processing targets
-│   └── ...                     # Other cookbook components
-└── build.d/                    # Local build directory (auto-created)
+```json
+{
+  "id": "WTCH-1828-01-06-a-i0001",
+  "lg": "en",
+  "ocrqa": 0.92,
+  "lg_decision": "all",
+  "systems": {...}
+}
 ```
 
-### 2. Customize Your Processing Logic
+**Consolidated Output:**
 
-After adaptation, customize these key files:
-
-- **`lib/cli_myimpressopipeline.py`**: Implement your processing logic
-- **`cookbook/processing_myimpressopipeline.mk`**: Define your processing targets
-- **`cookbook/paths_myimpressopipeline.mk`**: Configure input/output paths and S3 buckets
-
-### 3. Test Your Adapted Pipeline
-
-```bash
-# Use your new Makefile
-make -f Makefile.myimpressopipeline newspaper NEWSPAPER=actionfem
+```json
+{
+  "id": "WTCH-1828-01-06-a",
+  "consolidated": true,
+  "consolidated_ts_original": "2024-01-15T10:30:00Z",
+  "ts": "2025-11-23T14:20:00Z",
+  "i": [
+    {
+      "m": {
+        "id": "WTCH-1828-01-06-a-i0001",
+        "tp": "article",
+        "lg_original": "en",
+        "consolidated_lg": "en",
+        "consolidated_ocrqa": 0.92,
+        "consolidated_langident_run_id": "langident-lid-ensemble_multilingual_v2-0-2",
+        ...
+      }
+    }
+  ]
+}
 ```
 
 ## Build System
@@ -260,16 +486,16 @@ make -f Makefile.myimpressopipeline newspaper NEWSPAPER=actionfem
 
 - `make help`: Show available targets and current configuration
 - `make setup`: Initialize environment (run once after installation)
-- `make newspaper`: Process single newspaper
+- `make newspaper`: Process single newspaper consolidation
 - `make collection`: Process multiple newspapers in parallel
 - `make all`: Complete processing pipeline with data sync
 
 ### Data Management
 
-- `make sync`: Sync input and output data
-- `make sync-input`: Download input data from S3
-- `make sync-output`: Upload results to S3 (will never overwrite existing data)
-- `make clean-build`: Remove build directory
+- `make sync-input`: Download canonical issues and langident enrichments from S3
+- `make sync-output`: Upload consolidated results to S3 (never overwrites existing data)
+- `make sync`: Sync both input and output data
+- `make clean-build`: Remove local build directory
 
 ### Parallel Processing
 
@@ -288,15 +514,77 @@ The build system uses:
 - **S3 Integration**: Direct processing from/to S3 storage
 - **Distributed Processing**: Multiple machines can work independently
 - **Dependency Management**: Automatic dependency resolution via Make
+- **Strict Validation**: Exits with error if data requirements are not met
 
 For detailed build system documentation, see [cookbook/README.md](cookbook/README.md).
+
+## Versioning
+
+The consolidation pipeline uses date-based versioning for output:
+
+```
+vYYYY-MM-DD_INFO
+```
+
+Examples:
+
+- `v2025-11-23_initial`: Initial run on November 23, 2025
+- `v2025-11-23_rerun`: Rerun on the same date
+- `v2025-12-01_fixed_bug`: Bug fix run on December 1, 2025
+
+Set via environment or command-line:
+
+```bash
+make newspaper NEWSPAPER=WTCH RUN_VERSION_consolidatedcanonical=v2025-11-23_test
+```
+
+## Troubleshooting
+
+### Common Issues
+
+**Missing enrichment data:**
+
+```
+ERROR: Missing enrichment data for content item: WTCH-1828-01-06-a-i0042
+```
+
+- Cause: Content item in canonical issue has no corresponding enrichment
+- Solution: Ensure enrichment data is complete or update to latest enrichment run
+
+**Schema validation errors:**
+
+```
+ERROR: Issue WTCH-1828-01-06-a missing both 'ts' and 'cdt' fields
+```
+
+- Cause: Input canonical data doesn't conform to expected schema
+- Solution: Verify canonical data source and format
+
+**S3 authentication errors:**
+
+```
+ERROR: Error reading enrichment file: Access Denied
+```
+
+- Cause: Invalid S3 credentials
+- Solution: Check `.env` file and verify SE_ACCESS_KEY, SE_SECRET_KEY, SE_HOST_URL
+
+### Log Files
+
+Each processing run creates detailed logs:
+
+```
+build.d/.../NEWSPAPER-YEAR-issues.jsonl.bz2.log.gz
+```
+
+Logs are also uploaded to S3 alongside output files for troubleshooting distributed runs.
 
 ## Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Test with `make newspaper NEWSPAPER=actionfem`
+4. Test with `make newspaper NEWSPAPER=WTCH`
 5. Submit a pull request
 
 ## About Impresso

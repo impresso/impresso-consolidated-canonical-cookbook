@@ -1,4 +1,4 @@
-# Description: Makefile for template processing
+# Description: Makefile for consolidated canonical processing
 # Read the README.md for more information on how to use this Makefile.
 # Or run `make` for online help.
 
@@ -19,7 +19,12 @@ include cookbook/log.mk
 # to the repository! If you have stored config files in the repository set the
 # CONFIG_LOCAL_MAKE variable to a different name.
 CONFIG_LOCAL_MAKE ?= config.local.mk
-
+ifdef CFG
+  CONFIG_LOCAL_MAKE := $(CFG)
+  $(info Overriding CONFIG_LOCAL_MAKE to $(CONFIG_LOCAL_MAKE) from CFG variable)
+else
+  $(call log.info, CONFIG_LOCAL_MAKE)
+endif
 # Load local config if it exists (ignore silently if it does not exists)
 -include $(CONFIG_LOCAL_MAKE)
 
@@ -30,11 +35,23 @@ CONFIG_LOCAL_MAKE ?= config.local.mk
 
 #: Show help message
 help::
-	@echo "Makefile for TEMPLATE processing"
-	@echo "Usage: make <target>"
+	@echo "Makefile for consolidated canonical processing"
+	@echo "Usage: make <target> PROVIDER=<provider> NEWSPAPER=<newspaper>"
 	@echo "Targets:"
+	@echo "  setup                 # Prepare the local directories"
+	@echo "  collection            # Process multiple newspapers in parallel"
+	@echo "  all                   # Sync data and process all years of a single newspaper"
+	@echo "  newspaper             # Process a single newspaper for all years"
+	@echo "  sync                  # Sync input data (canonical + langident enrichments)"
+	@echo "  sync-input            # Sync only input data"
+	@echo "  sync-output           # Sync output data from S3"
+	@echo "  resync                # Remove local sync stamps and sync again"
+	@echo "  clean-build           # Remove the entire build directory"
+	@echo "  clean-newspaper       # Remove local directory for a single newspaper"
+	@echo "  help                  # Show this help message"
+	@echo "  help-orchestration    # Show detailed orchestration and parallelization help"
 
-# Set special .DEFAULT_GOAL variable to help target
+# Default target when no target is specified on the command line
 .DEFAULT_GOAL := help
 .PHONY: help
 
@@ -52,8 +69,8 @@ include cookbook/setup.mk
 include cookbook/setup_python.mk
 # for asw tool configuration if needed
 # include cookbook/setup_aws.mk
-# for TEMPLATE configuration, adapt to your needs
-include cookbook/setup_TEMPLATE.mk
+# for consolidatedcanonical configuration
+include cookbook/setup_consolidatedcanonical.mk
 
 # Load newspaper list configuration and processing rules
 include cookbook/newspaper_list.mk
@@ -61,8 +78,9 @@ include cookbook/newspaper_list.mk
 
 # SETUP PATHS
 # include all path makefile snippets for s3 collection directories that you need
-include cookbook/paths_rebuilt.mk
-include cookbook/paths_TEMPLATE.mk
+include cookbook/paths_canonical.mk
+include cookbook/paths_langident.mk
+include cookbook/paths_consolidatedcanonical.mk
 
 
 # MAIN TARGETS
@@ -71,15 +89,16 @@ include cookbook/main_targets.mk
 
 # SYNCHRONIZATION TARGETS
 include cookbook/sync.mk
-include cookbook/sync_rebuilt.mk
-include cookbook/sync_TEMPLATE.mk
+include cookbook/sync_canonical.mk
+include cookbook/sync_langident.mk
+include cookbook/sync_consolidatedcanonical.mk
 
 include cookbook/clean.mk
 
 
 # PROCESSING TARGETS
 include cookbook/processing.mk
-include cookbook/processing_TEMPLATE.mk
+include cookbook/processing_consolidatedcanonical.mk
 
 
 # FUNCTION
@@ -87,3 +106,20 @@ include cookbook/local_to_s3.mk
 
 
 # FURTHER ADDONS
+# configure for aws client access
+include cookbook/aws.mk
+
+# Add help target with configuration documentation
+help::
+	@echo ""
+	@echo "CONFIGURATION:"
+	@echo "  Use CFG=<file> to specify a custom configuration file"
+	@echo "  Example: make newspaper CFG=config.prod.mk PROVIDER=BL NEWSPAPER=WTCH"
+	@echo ""
+	@echo "REQUIRED VARIABLES:"
+	@echo "  PROVIDER          #  Data provider organization (e.g., BL, SWA, NZZ)"
+	@echo "  NEWSPAPER         #  Target newspaper to process (e.g., WTCH, actionfem)"
+	@echo ""
+	@echo "For detailed information about processing configuration, parallelization,"
+	@echo "performance tuning, and examples, run: make help-orchestration"
+	@echo ""
