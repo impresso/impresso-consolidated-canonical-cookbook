@@ -51,8 +51,8 @@ NEWSPAPER ?= BL/WTCH
 # Canonical input data bucket
 S3_BUCKET_CANONICAL ?= 112-canonical-final
 
-# Langident enrichment data bucket
-S3_BUCKET_LANGIDENT_ENRICHMENT ?= 115-canonical-processed-final
+# Langident data bucket
+S3_BUCKET_LANGIDENT ?= 115-canonical-processed-final
 
 # Consolidated output data bucket
 S3_BUCKET_consolidatedcanonical ?= 116-canonical-consolidated-sandbox
@@ -60,7 +60,7 @@ S3_BUCKET_consolidatedcanonical ?= 116-canonical-consolidated-sandbox
 
 # PROCESSING CONFIGURATION
 # ========================
-
+MAKE_SILENCE_RECIPE:=
 # Langident enrichment run ID to use for consolidation
 # This should match the run ID in the langident enrichment S3 path
 LANGIDENT_ENRICHMENT_RUN_ID ?= langident-lid-ensemble_multilingual_v2-0-2
@@ -96,21 +96,21 @@ NEWSPAPER_JOBS ?= 4
 
 # Maximum system load average to prevent system overload
 # Set to lower value if system becomes unresponsive during processing
-# MAX_LOAD := 16
+# MAX_LOAD ?= 16
 
 # Override auto-detected CPU count if needed
-# NPROC := 32
+# NPROC ?= 32
 
 
 # BUILD CONFIGURATION
 # ===================
 
 # Local build directory
-# BUILD_DIR := build.d
+# BUILD_DIR ?= build.d
 
 # Newspaper year sorting for processing order
 # Options: shuf (random), cat (chronological), tac (reverse chronological)
-# NEWSPAPER_YEAR_SORTING := shuf
+# NEWSPAPER_YEAR_SORTING ?= shuf
 
 
 # LOGGING CONFIGURATION
@@ -126,7 +126,7 @@ LOGGING_LEVEL ?= INFO
 
 # File containing list of newspapers to process for collection target
 # One newspaper per line, or space-separated on one line
-# NEWSPAPERS_TO_PROCESS_FILE := $(BUILD_DIR)/newspapers.txt
+# NEWSPAPERS_TO_PROCESS_FILE ?= $(BUILD_DIR)/newspapers.txt
 
 # Method for generating newspaper list from S3
 # Options: shuf (random order), sort (alphabetical), cat (S3 order)
@@ -136,6 +136,6 @@ LOGGING_LEVEL ?= INFO
 
 # Example: Override version for all providers (use semantic suffix)
 # ifeq ($(NEWSPAPER_FNMATCH),*)
-#   LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-#   RUN_VERSION_consolidatedcanonical := v2025-11-23_complete
+#   LANGIDENT_ENRICHMENT_RUN_ID ?= langident-lid-ensemble_multilingual_v2-0-2
+#   RUN_VERSION_consolidatedcanonical ?= v2025-11-23_complete
 # endif

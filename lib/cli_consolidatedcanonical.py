@@ -10,9 +10,9 @@ The consolidation process:
 1. **Reads Input Data**: Loads canonical issue data (JSONL) and corresponding
    langident/OCRQA enrichment data from S3 or local files.
 
-2. **Strict Matching**: Requires exact 1:1 correspondence between content items
-   in canonical issues and enrichment data. Exits with error if any CI is missing
-   from enrichment data.
+2. **Flexible Matching**: Attempts to match content items in canonical issues with
+   enrichment data. Content items without enrichment data (images, text too short
+   for analysis, etc.) are logged and skipped but do not cause processing to fail.
 
 3. **Field Transformations**:
    - Renames `lg` → `lg_original` (if exists in canonical)
@@ -38,15 +38,19 @@ Schema Reference:
     The output conforms to issue.schema.json with these consolidated properties:
     - consolidated: boolean (true)
     - consolidated_ts_original: string (original timestamp)
-    - consolidated_lg: string (computed language)
-    - consolidated_langident_run_id: string
-    - consolidated_ocrqa: number (0-1)
     
-    Per content item metadata:
+    Per content item metadata (when enrichment data available):
     - lg_original: string|null (original language if existed)
     - consolidated_lg: string|null (computed language)
     - consolidated_ocrqa: number
     - consolidated_langident_run_id: string
+    
+Note:
+    Content items without enrichment data are preserved in the output without
+    consolidated_* fields. This occurs for:
+    - Images (tp="image")
+    - Content items with text too short for language identification
+    - Other items not processed by the langident/OCRQA pipeline
 """
 
 import logging
@@ -120,8 +124,9 @@ class ConsolidatedCanonicalProcessor:
     """
     Processor that merges canonical issues with langident/OCRQA enrichments.
 
-    Implements strict matching: all content items in canonical must have
-    corresponding enrichment data, or processing fails with error.
+    Implements flexible matching: content items without enrichment data (images,
+    text too short for analysis, etc.) are skipped with a warning but processing
+    continues successfully.
     """
 
     def __init__(
@@ -225,10 +230,11 @@ class ConsolidatedCanonicalProcessor:
             enrichments: Dictionary of all enrichment data
 
         Returns:
-            Updated metadata with consolidated fields
+            Updated metadata with consolidated fields (if enrichment available)
 
-        Raises:
-            SystemExit: If enrichment data is missing for this CI
+        Note:
+            Content items without enrichment data are returned unchanged.
+            This includes images and items with text too short for analysis.
         """
         ci_id = ci_metadata.get("id")
 
@@ -236,17 +242,7 @@ class ConsolidatedCanonicalProcessor:
             log.error("Content item missing 'id' field")
             sys.exit(1)
 
-        # Strict matching: enrichment must exist
-        if ci_id not in enrichments:
-            log.error(f"Missing enrichment data for content item: {ci_id}")
-            log.error(
-                "Consolidation requires complete enrichment data for all content items"
-            )
-            sys.exit(1)
-
-        enrichment = enrichments[ci_id]
-
-        # Rename lg → lg_original if it exists
+        # Always rename lg → lg_original if it exists (for all content items)
         if "lg" in ci_metadata:
             ci_metadata["lg_original"] = ci_metadata.pop("lg")
             log.debug(f"Renamed lg → lg_original for {ci_id}")
@@ -254,6 +250,22 @@ class ConsolidatedCanonicalProcessor:
             # Handle legacy 'l' field
             ci_metadata["lg_original"] = ci_metadata.pop("l")
             log.debug(f"Renamed l → lg_original for {ci_id}")
+
+        # Skip consolidation for image content items (they don't have lg/ocrqa)
+        ci_type = ci_metadata.get("tp")
+        if ci_type == "image":
+            log.debug(f"Skipping consolidation for image content item: {ci_id}")
+            return ci_metadata
+
+        # Check if enrichment exists - if not, warn and skip (don't fail)
+        if ci_id not in enrichments:
+            log.warning(
+                f"Missing enrichment data for content item: {ci_id} (type: {ci_type}). "
+                "Skipping consolidation for this item."
+            )
+            return ci_metadata
+
+        enrichment = enrichments[ci_id]
 
         # Add consolidated fields
         ci_metadata["consolidated_lg"] = enrichment["lg"]
@@ -279,9 +291,6 @@ class ConsolidatedCanonicalProcessor:
 
         Returns:
             Consolidated issue data
-
-        Raises:
-            SystemExit: If any content item is missing enrichment data
         """
         issue_id = issue_data.get("id", "UNKNOWN")
         log.debug(f"Processing issue: {issue_id}")
@@ -303,13 +312,23 @@ class ConsolidatedCanonicalProcessor:
             log.warning(f"Issue {issue_id} has no content items")
 
         processed_count = 0
+        skipped_count = 0
         for ci in content_items:
             ci_metadata = ci.get("m", {})
             if ci_metadata:
-                self.consolidate_content_item(ci_metadata, enrichments)
-                processed_count += 1
+                updated_metadata = self.consolidate_content_item(
+                    ci_metadata, enrichments
+                )
+                # Track if we skipped consolidation
+                if "consolidated_lg" not in updated_metadata:
+                    skipped_count += 1
+                else:
+                    processed_count += 1
 
-        log.info(f"Consolidated {processed_count} content items in issue {issue_id}")
+        log.info(
+            f"Consolidated {processed_count} content items in issue {issue_id}"
+            f" (skipped {skipped_count} items without enrichment data)"
+        )
 
         return issue_data
 
