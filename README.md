@@ -57,7 +57,17 @@ Into a unified format that includes:
    - Organized by data provider (e.g., BL, SWA, NZZ)
    - Format: JSONL (one issue per line)
 
-2. **Langident/OCRQA Enrichments** (`s3://115-canonical-processed-final/`):
+2. **Canonical Pages** (`s3://112-canonical-final/`):
+
+   ```
+   s3://112-canonical-final/PROVIDER/NEWSPAPER/pages/NEWSPAPER-YEAR/NEWSPAPER-YEAR-DATE-pages.jsonl.bz2
+   ```
+
+   - Contains page-level newspaper data organized by year directories
+   - Organized by data provider matching issues structure
+   - Format: JSONL (one page per line)
+
+3. **Langident/OCRQA Enrichments** (`s3://115-canonical-processed-final/`):
    ```
    s3://115-canonical-processed-final/langident/langident-lid-ensemble_multilingual_v2-0-2/PROVIDER/NEWSPAPER/NEWSPAPER-YEAR.jsonl.bz2
    ```
@@ -70,10 +80,13 @@ Into a unified format that includes:
 1. **Data Synchronization**:
 
    - Downloads canonical issues from S3
+   - Downloads canonical pages from S3
    - Downloads langident/OCRQA enrichments from S3
    - Uses stamp files to track sync status
 
 2. **Consolidation**:
+
+   **Issues Processing:**
 
    - For each issue file:
      - Loads all enrichment data into memory
@@ -88,8 +101,16 @@ Into a unified format that includes:
        - Updates `ts` to processing timestamp
      - Writes consolidated issue to output
 
+   **Pages Processing:**
+
+   - For each year of pages:
+     - Copies all page files from canonical S3 to consolidated S3
+     - Preserves directory structure and organization
+     - Future versions may integrate additional data (e.g., ReOCR results)
+
 3. **Output Upload**:
-   - Uploads consolidated canonical files to S3
+   - Uploads consolidated canonical issues to S3
+   - Uploads consolidated canonical pages to S3
    - Preserves logs for troubleshooting
 
 ### Output Data
@@ -97,13 +118,24 @@ Into a unified format that includes:
 **Consolidated Canonical Issues** (`s3://118-canonical-consolidated-final/`):
 
 ```
-s3://118-canonical-consolidated-final/VERSION/PROVIDER/NEWSPAPER/NEWSPAPER-YEAR-issues.jsonl.bz2
+s3://118-canonical-consolidated-final/VERSION/PROVIDER/NEWSPAPER/issues/NEWSPAPER-YEAR-issues.jsonl.bz2
 ```
 
 - Format: JSONL (one issue per line)
 - Schema: Conforms to `issue.schema.json` with `consolidated=true`
 - Versioning: Uses date-based versioning (e.g., `v2025-11-23_initial`)
 - Organization: Mirrors canonical structure with VERSION prefix
+
+**Consolidated Canonical Pages** (`s3://118-canonical-consolidated-final/`):
+
+```
+s3://118-canonical-consolidated-final/VERSION/PROVIDER/NEWSPAPER/pages/NEWSPAPER-YEAR/NEWSPAPER-YEAR-DATE-pages.jsonl.bz2
+```
+
+- Format: JSONL (one page per line)
+- Schema: Conforms to canonical pages schema
+- Versioning: Uses same VERSION as issues
+- Organization: Mirrors canonical pages structure with VERSION prefix
 
 ## Quick Start
 
