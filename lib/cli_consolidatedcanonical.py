@@ -59,6 +59,8 @@ import json
 import sys
 from typing import Dict, List, Optional, Any
 from smart_open import open as smart_open  # type: ignore
+import jsonschema
+from jsonschema import Draft7Validator
 
 from impresso_cookbook import (  # type: ignore
     get_s3_client,
@@ -68,6 +70,33 @@ from impresso_cookbook import (  # type: ignore
 )
 
 log = logging.getLogger(__name__)
+
+SCHEMA_BASE_URI = "https://impresso.github.io/impresso-schemas/json/canonical/"
+IMPRESSO_SCHEMA = "issue.schema.json"
+
+
+def initialize_validator(
+    schema_base_uri: str = SCHEMA_BASE_URI, schema: str = IMPRESSO_SCHEMA
+) -> jsonschema.Draft7Validator:
+    """
+    Initializes the schema validator.
+
+    Args:
+        schema_base_uri: Base URI for the schema
+        schema: Schema filename
+
+    Returns:
+        Draft7Validator: Configured validator instance
+    """
+    with smart_open(
+        schema_base_uri + schema,
+        "r",
+    ) as f:
+        schema_dict = json.load(f)
+
+    # Directly create the validator without a registry or a resolver
+    validator = Draft7Validator(schema_dict)
+    return validator
 
 
 def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
@@ -117,6 +146,13 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         help="Langident run ID for provenance tracking (required)",
         required=True,
     )
+    parser.add_argument(
+        "--validate",
+        action="store_true",
+        help=(
+            "Validate consolidated canonical JSON against schema (default: %(default)s)"
+        ),
+    )
     return parser.parse_args(args)
 
 
@@ -137,6 +173,7 @@ class ConsolidatedCanonicalProcessor:
         langident_run_id: str,
         log_level: str = "INFO",
         log_file: Optional[str] = None,
+        validate: bool = False,
     ) -> None:
         """
         Initialize the ConsolidatedCanonicalProcessor.
@@ -148,6 +185,7 @@ class ConsolidatedCanonicalProcessor:
             langident_run_id: Run ID for langident provenance
             log_level: Logging level (default: "INFO")
             log_file: Path to log file (default: None)
+            validate: Whether to validate output against schema (default: False)
         """
         self.canonical_input = canonical_input
         self.enrichment_input = enrichment_input
@@ -155,6 +193,7 @@ class ConsolidatedCanonicalProcessor:
         self.langident_run_id = langident_run_id
         self.log_level = log_level
         self.log_file = log_file
+        self.validate = validate
 
         # Configure the module-specific logger
         setup_logging(self.log_level, self.log_file, logger=log)
@@ -162,6 +201,11 @@ class ConsolidatedCanonicalProcessor:
         # Initialize S3 client and timestamp
         self.s3_client = get_s3_client()
         self.timestamp = get_timestamp()
+
+        # Initialize validator if validation is enabled
+        if self.validate:
+            self.schema_validator = initialize_validator()
+            log.info("Schema validation enabled")
 
         log.info(f"Initialized processor with timestamp: {self.timestamp}")
         log.info(f"Langident run ID: {self.langident_run_id}")
@@ -332,6 +376,28 @@ class ConsolidatedCanonicalProcessor:
 
         return issue_data
 
+    def validate_issue(self, issue_data: Dict[str, Any]) -> bool:
+        """
+        Validates an issue against the schema.
+
+        Args:
+            issue_data: The issue data to validate
+
+        Returns:
+            bool: True if the issue is valid, False otherwise
+        """
+        try:
+            self.schema_validator.validate(issue_data)
+            log.debug("Issue %s is valid", issue_data.get("id", "UNKNOWN"))
+            return True
+        except jsonschema.ValidationError as e:
+            issue_id = issue_data.get("id", "UNKNOWN")
+            log.error("Validation error for issue %s: %s", issue_id, e)
+            return False
+        except jsonschema.SchemaError as e:
+            log.error("Schema error: %s", e)
+            return False
+
     def run(self) -> None:
         """
         Run the consolidation processor.
@@ -375,6 +441,15 @@ class ConsolidatedCanonicalProcessor:
                         issue_data = json.loads(line)
                         consolidated_issue = self.process_issue(issue_data, enrichments)
 
+                        # Validate if validation is enabled
+                        if self.validate:
+                            if not self.validate_issue(consolidated_issue):
+                                log.error(
+                                    "Validation failed for issue on line %s",
+                                    line_num,
+                                )
+                                sys.exit(1)
+
                         # Write consolidated issue
                         output_f.write(
                             json.dumps(consolidated_issue, ensure_ascii=False) + "\n"
@@ -408,6 +483,7 @@ def main(args: Optional[List[str]] = None) -> None:
         langident_run_id=options.langident_run_id,
         log_level=options.log_level,
         log_file=options.log_file,
+        validate=options.validate,
     )
 
     # Log the parsed options after logger is configured
