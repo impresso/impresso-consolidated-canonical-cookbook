@@ -150,6 +150,12 @@ Ensure you have the required system dependencies installed:
 ```bash
 sudo apt-get update
 sudo apt-get install -y make git git-lfs parallel coreutils python3 python3-pip
+
+# Install AWS CLI
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+rm -rf aws awscliv2.zip
 ```
 
 **macOS:**
@@ -159,7 +165,7 @@ sudo apt-get install -y make git git-lfs parallel coreutils python3 python3-pip
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 # Install dependencies
-brew install make git git-lfs parallel coreutils python3
+brew install make git git-lfs parallel coreutils python3 awscli
 ```
 
 **System Requirements:**
@@ -167,15 +173,15 @@ brew install make git git-lfs parallel coreutils python3
 - Python 3.11+
 - Make (GNU Make recommended)
 - Git with git-lfs
-- AWS CLI (optional, for direct S3 access)
+- AWS CLI (for S3 access)
 
 ### 2. Clone and Setup
 
 1. **Clone the repository:**
 
    ```bash
-   git clone --recursive <your-template-repo>
-   cd impresso-cookbook-template
+   git clone --recursive https://github.com/impresso/impresso-consolidated-canonical-cookbook.git
+   cd impresso-consolidated-canonical-cookbook
    ```
 
 2. **Configure environment:**
