@@ -247,6 +247,7 @@ class ConsolidatedCanonicalProcessor:
                         enrichments[ci_id] = {
                             "lg": data.get("lg"),
                             "ocrqa": data.get("ocrqa"),
+                            "len": data.get("len"),
                             "lg_decision": data.get("lg_decision"),
                             "systems": data.get("systems", {}),
                             "alphabetical_ratio": data.get("alphabetical_ratio"),
@@ -314,6 +315,7 @@ class ConsolidatedCanonicalProcessor:
         # Add consolidated fields
         ci_metadata["consolidated_lg"] = enrichment["lg"]
         ci_metadata["consolidated_ocrqa"] = enrichment["ocrqa"]
+        ci_metadata["consolidated_char_len"] = enrichment["len"]
         ci_metadata["consolidated_langident_run_id"] = self.langident_run_id
 
         # Note: consolidated_reocr_applied and consolidated_reocr_run_id
@@ -376,12 +378,13 @@ class ConsolidatedCanonicalProcessor:
 
         return issue_data
 
-    def validate_issue(self, issue_data: Dict[str, Any]) -> bool:
+    def validate_issue(self, issue_data: Dict[str, Any], source_file: str = "") -> bool:
         """
-        Validates an issue against the schema.
+        Validates an issue against the schema with detailed diagnostics.
 
         Args:
             issue_data: The issue data to validate
+            source_file: Source filename for error reporting
 
         Returns:
             bool: True if the issue is valid, False otherwise
@@ -392,7 +395,45 @@ class ConsolidatedCanonicalProcessor:
             return True
         except jsonschema.ValidationError as e:
             issue_id = issue_data.get("id", "UNKNOWN")
-            log.error("Validation error for issue %s: %s", issue_id, e)
+
+            # Extract content item information if error is in a content item
+            ci_id = "N/A"
+            ci_index = None
+            error_path = list(e.absolute_path)
+
+            # Check if error path contains content item reference
+            # Path format: ['i', index, 'm', 'consolidated_ocrqa']
+            if len(error_path) >= 2 and error_path[0] == "i":
+                ci_index = error_path[1]
+                try:
+                    content_items = issue_data.get("i", [])
+                    if isinstance(ci_index, int) and ci_index < len(content_items):
+                        ci_metadata = content_items[ci_index].get("m", {})
+                        ci_id = ci_metadata.get("id", "UNKNOWN")
+                except (IndexError, TypeError, KeyError):
+                    pass
+
+            # Build detailed error message
+            error_location = f"File: {source_file}" if source_file else "File: N/A"
+            error_details = [
+                "=" * 80,
+                "VALIDATION ERROR",
+                error_location,
+                f"Issue ID: {issue_id}",
+                f"Content Item ID: {ci_id}",
+                f"Content Item Index: {ci_index if ci_index is not None else 'N/A'}",
+                f"Error Path: {'.'.join(str(p) for p in error_path)}",
+                f"Error Message: {e.message}",
+                f"Failed Value: {e.instance}",
+                f"Schema Path: {'.'.join(str(p) for p in e.absolute_schema_path)}",
+                "=" * 80,
+            ]
+
+            log.error("\n".join(error_details))
+
+            # Also log the full validation error for debugging
+            log.debug("Full validation error details: %s", e)
+
             return False
         except jsonschema.SchemaError as e:
             log.error("Schema error: %s", e)
@@ -443,7 +484,9 @@ class ConsolidatedCanonicalProcessor:
 
                         # Validate if validation is enabled
                         if self.validate:
-                            if not self.validate_issue(consolidated_issue):
+                            if not self.validate_issue(
+                                consolidated_issue, self.canonical_input
+                            ):
                                 log.error(
                                     "Validation failed for issue on line %s",
                                     line_num,
