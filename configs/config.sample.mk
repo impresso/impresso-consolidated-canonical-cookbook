@@ -55,7 +55,7 @@ NEWSPAPER := WTCH
 S3_BUCKET_LANGIDENT_ENRICHMENT := 115-canonical-processed-final
 
 # Consolidated output data bucket
-S3_BUCKET_consolidatedcanonical := 116-canonical-consolidated-sandbox
+S3_BUCKET_CONSOLIDATEDCANONICAL := 116-canonical-consolidated-sandbox
 
 
 # PROCESSING CONFIGURATION
@@ -79,7 +79,7 @@ LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
 # BAD examples:
 #   v2025-11-23_BL       - Don't use provider names
 #   v2025-11-23_SWA      - Don't use provider names
-RUN_VERSION_consolidatedcanonical := v2025-11-23_initial
+RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_initial
 
 
 # PARALLELIZATION SETTINGS
@@ -141,7 +141,7 @@ LOGGING_LEVEL := INFO
 # British Library newspapers
 ifeq ($(NEWSPAPER_FNMATCH),BL/*)
   LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-  # RUN_VERSION_consolidatedcanonical := v2025-11-23_initial
+  # RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_initial
   # Process only BL newspapers
   NEWSPAPER_FNMATCH := BL/*
 endif
@@ -149,19 +149,19 @@ endif
 # Swiss newspapers (SWA)
 ifeq ($(NEWSPAPER_FNMATCH),SWA/*)
   LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-  # RUN_VERSION_consolidatedcanonical := v2025-11-23_initial
+  # RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_initial
   NEWSPAPER_FNMATCH := SWA/*
 endif
 
 # French newspapers (INA)
 ifeq ($(NEWSPAPER_FNMATCH),INA/*)
   LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-  # RUN_VERSION_consolidatedcanonical := v2025-11-23_initial
+  # RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_initial
   NEWSPAPER_FNMATCH := INA/*
 endif
 
 # Process all providers
 # ifeq ($(NEWSPAPER_FNMATCH),*)
 #   LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-#   RUN_VERSION_consolidatedcanonical := v2025-11-23_all
+#   RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_all
 # endif

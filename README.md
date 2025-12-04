@@ -275,13 +275,13 @@ The configuration file can set any variable, including:
 # config.bl.mk - British Library newspapers
 PROVIDER := BL
 LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-RUN_VERSION_consolidatedcanonical := v2025-11-23_initial
+RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_initial
 COLLECTION_JOBS := 4
 
 # config.production.mk - Production settings
 PROVIDER := BL
-S3_BUCKET_consolidatedcanonical := 118-canonical-consolidated-final
-RUN_VERSION_consolidatedcanonical := v2025-11-23_production
+S3_BUCKET_CONSOLIDATEDCANONICAL := 118-canonical-consolidated-final
+RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_production
 LOGGING_LEVEL := INFO
 COLLECTION_JOBS := 8
 MAX_LOAD := 16
@@ -330,7 +330,7 @@ These can be set in `.env` as shell variables or passed as command arguments to 
 **Optional Processing Variables:**
 
 - `BUILD_DIR`: Local build directory (default: `build.d`)
-- `RUN_VERSION_consolidatedcanonical`: Version identifier (default: `v2025-11-23_initial`)
+- `RUN_VERSION_CONSOLIDATEDCANONICAL`: Version identifier (default: `v2025-11-23_initial`)
 - `LANGIDENT_ENRICHMENT_RUN_ID`: Langident run to use (default: `langident-lid-ensemble_multilingual_v2-0-2`)
 - `NPROC`: Number of CPU cores (auto-detected if not set)
 - `NEWSPAPER_JOBS`: Number of parallel jobs per newspaper
@@ -343,7 +343,7 @@ Configure S3 buckets in your paths file or via environment variables:
 
 - `S3_BUCKET_CANONICAL`: Canonical input data bucket (default: `112-canonical-final`)
 - `S3_BUCKET_LANGIDENT_ENRICHMENT`: Enrichment data bucket (default: `115-canonical-processed-final`)
-- `S3_BUCKET_consolidatedcanonical`: Output data bucket (default: `118-canonical-consolidated-final`)
+- `S3_BUCKET_CONSOLIDATEDCANONICAL`: Output data bucket (default: `118-canonical-consolidated-final`)
 
 ## Running the Pipeline
 
@@ -573,7 +573,7 @@ Examples:
 Set via environment or command-line:
 
 ```bash
-make newspaper NEWSPAPER=WTCH RUN_VERSION_consolidatedcanonical=v2025-11-23_test
+make newspaper NEWSPAPER=WTCH RUN_VERSION_CONSOLIDATEDCANONICAL=v2025-11-23_test
 ```
 
 ## Troubleshooting

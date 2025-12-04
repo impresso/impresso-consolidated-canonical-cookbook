@@ -55,7 +55,7 @@ S3_BUCKET_CANONICAL ?= 112-canonical-final
 S3_BUCKET_LANGIDENT_ENRICHMENT ?= 115-canonical-processed-final
 
 # Consolidated output data bucket
-S3_BUCKET_consolidatedcanonical ?= 116-canonical-consolidated-sandbox
+S3_BUCKET_CONSOLIDATEDCANONICAL ?= 116-canonical-consolidated-sandbox
 
 
 # PROCESSING CONFIGURATION
@@ -79,7 +79,7 @@ LANGIDENT_ENRICHMENT_RUN_ID ?= langident-lid-ensemble_multilingual_v2-0-2
 # BAD examples:
 #   v2025-11-23_BL       - Don't use provider names
 #   v2025-11-23_SWA      - Don't use provider names
-RUN_VERSION_consolidatedcanonical ?= v2025-11-23_initial
+RUN_VERSION_CONSOLIDATEDCANONICAL ?= v2025-11-23_initial
 
 
 # PARALLELIZATION SETTINGS
@@ -137,5 +137,5 @@ LOGGING_LEVEL ?= INFO
 # Example: Override version for all providers (use semantic suffix)
 # ifeq ($(NEWSPAPER_FNMATCH),*)
 #   LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-#   RUN_VERSION_consolidatedcanonical := v2025-11-23_complete
+#   RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_complete
 # endif

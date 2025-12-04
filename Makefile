@@ -70,7 +70,7 @@ include cookbook/setup_python.mk
 # for asw tool configuration if needed
 # include cookbook/setup_aws.mk
 # for consolidatedcanonical configuration
-include cookbook/setup_consolidatedcanonical.mk
+include cookbook/setup_CONSOLIDATEDCANONICAL.mk
 
 # Load newspaper list configuration and processing rules
 include cookbook/newspaper_list.mk
@@ -80,7 +80,7 @@ include cookbook/newspaper_list.mk
 # include all path makefile snippets for s3 collection directories that you need
 include cookbook/paths_canonical.mk
 include cookbook/paths_langident.mk
-include cookbook/paths_consolidatedcanonical.mk
+include cookbook/paths_CONSOLIDATEDCANONICAL.mk
 
 
 # MAIN TARGETS
@@ -91,14 +91,14 @@ include cookbook/main_targets.mk
 include cookbook/sync.mk
 include cookbook/sync_canonical.mk
 include cookbook/sync_langident.mk
-include cookbook/sync_consolidatedcanonical.mk
+include cookbook/sync_CONSOLIDATEDCANONICAL.mk
 
 include cookbook/clean.mk
 
 
 # PROCESSING TARGETS
 include cookbook/processing.mk
-include cookbook/processing_consolidatedcanonical.mk
+include cookbook/processing_CONSOLIDATEDCANONICAL.mk
 
 
 # FUNCTION

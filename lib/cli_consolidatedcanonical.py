@@ -351,6 +351,7 @@ class ConsolidatedCanonicalProcessor:
         issue_data["consolidated"] = True
         issue_data["consolidated_ts_original"] = original_ts
         issue_data["ts"] = self.timestamp
+        del issue_data["cdt"]  # Remove cdt if present
 
         # Process all content items
         content_items = issue_data.get("i", [])
