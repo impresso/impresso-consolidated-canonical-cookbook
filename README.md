@@ -275,7 +275,7 @@ The configuration file can set any variable, including:
 # config.bl.mk - British Library newspapers
 PROVIDER := BL
 LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-2
-RUN_VERSION_consolidatedcanonical := v2025-11-23_BL
+RUN_VERSION_consolidatedcanonical := v2025-11-23_initial
 COLLECTION_JOBS := 4
 
 # config.production.mk - Production settings
