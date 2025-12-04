@@ -4,3 +4,13 @@ SE_ACCESS_KEY=<YOUR VALUE>
 SE_SECRET_KEY=<YOUR VALUE>
 # create python venv inside the project
 PIPENV_VENV_IN_PROJECT=enabled
+
+# Processing configuration
+# Data provider organization (e.g., BL, SWA, NZZ)
+PROVIDER=BL
+# Target newspaper to process
+NEWSPAPER=WTCH
+# Langident run ID for enrichment data
+LANGIDENT_ENRICHMENT_RUN_ID=langident-lid-ensemble_multilingual_v2-0-2
+# Version identifier for consolidated output
+RUN_VERSION_consolidatedcanonical=v2025-11-23_initial
