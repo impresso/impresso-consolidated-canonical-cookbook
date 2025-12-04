@@ -411,14 +411,11 @@ make collection NEWSPAPER_FNMATCH="BL/*" COLLECTION_JOBS=4
 # Process all Swiss newspapers
 make collection NEWSPAPER_FNMATCH="SWA/*" COLLECTION_JOBS=4
 
-# Process specific newspaper across all providers
-make collection NEWSPAPER_FNMATCH="*/WTCH" COLLECTION_JOBS=2
-
 # Process all newspapers (use with caution - may be very large)
 make collection COLLECTION_JOBS=8
 
 # Use a configuration file for complex setups
-make collection CFG=config.bl.mk
+make collection CFG=configs/config_consolidatedcanonical_v2025-11-23_initial.mk
 ```
 
 ### Flexible Provider Handling
