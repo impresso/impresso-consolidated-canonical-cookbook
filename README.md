@@ -291,8 +291,6 @@ See `config.sample.mk` for a complete list of configurable variables.
 
 ## Environment Variables
 
-## Environment Variables
-
 Before running any processing, configure your environment:
 
 ### Required Environment Variables
