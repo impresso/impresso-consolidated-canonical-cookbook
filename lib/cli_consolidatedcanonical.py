@@ -61,6 +61,8 @@ from typing import Dict, List, Optional, Any
 from smart_open import open as smart_open  # type: ignore
 import jsonschema
 from jsonschema import Draft7Validator
+import re
+from datetime import datetime
 
 from impresso_cookbook import (  # type: ignore
     get_s3_client,
@@ -347,11 +349,15 @@ class ConsolidatedCanonicalProcessor:
             log.error(f"Issue {issue_id} missing both 'ts' and 'cdt' fields")
             sys.exit(1)
 
+        # Convert to ISO8601 if needed
+        original_ts_iso = ensure_iso8601_z(original_ts)
+
         # Set consolidated flag and timestamps
         issue_data["consolidated"] = True
-        issue_data["consolidated_ts_original"] = original_ts
+        issue_data["consolidated_ts_original"] = original_ts_iso
         issue_data["ts"] = self.timestamp
-        del issue_data["cdt"]  # Remove cdt if present
+        if "cdt" in issue_data:
+            del issue_data["cdt"]  # Remove cdt if present
 
         # Process all content items
         content_items = issue_data.get("i", [])
@@ -509,6 +515,32 @@ class ConsolidatedCanonicalProcessor:
         except Exception as e:
             log.error(f"Error during consolidation: {e}", exc_info=True)
             sys.exit(1)
+
+
+def ensure_iso8601_z(ts: str) -> str:
+    """
+    Ensure timestamp is in ISO8601 format with 'Z' (UTC): YYYY-MM-DDTHH:MM:SSZ.
+    Converts from 'YYYY-MM-DD HH:MM:SS' or similar if needed.
+    """
+    if not ts:
+        return ts
+    # Already in correct format
+    if re.match(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$", ts):
+        return ts
+    # Try to parse common alternative: 'YYYY-MM-DD HH:MM:SS'
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%d %H:%M:%S")
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        pass
+    # Try to parse ISO8601 without Z: 'YYYY-MM-DDTHH:MM:SS'
+    try:
+        dt = datetime.strptime(ts, "%Y-%m-%dT%H:%M:%S")
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    except Exception:
+        pass
+    # If all fails, return as is (let validation fail)
+    return ts
 
 
 def main(args: Optional[List[str]] = None) -> None:
