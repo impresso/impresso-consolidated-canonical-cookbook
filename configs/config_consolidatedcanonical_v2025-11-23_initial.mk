@@ -33,7 +33,7 @@ NEWSPAPER_HAS_PROVIDER ?= 1
 #   */WTCH         - Process WTCH newspaper across all providers
 #   BL/AATA        - Process only BL/AATA
 #   *              - Process all newspapers (leave empty for all)
-NEWSPAPER_FNMATCH ?= BL/*
+# NEWSPAPER_FNMATCH ?= BL/*
 
 # Data provider organization (e.g., BL, SWA, NZZ, INA)
 # Can be empty if NEWSPAPER contains provider (e.g., BL/WTCH)
@@ -131,11 +131,3 @@ LOGGING_LEVEL ?= INFO
 # Method for generating newspaper list from S3
 # Options: shuf (random order), sort (alphabetical), cat (S3 order)
 # NEWSPAPER_LIST_SORTING ?= shuf
-
-
-
-# Example: Override version for all providers (use semantic suffix)
-# ifeq ($(NEWSPAPER_FNMATCH),*)
-#   LANGIDENT_ENRICHMENT_RUN_ID ?= langident-lid-ensemble_multilingual_v2-0-2
-#   RUN_VERSION_CONSOLIDATEDCANONICAL ?= v2025-11-23_complete
-# endif

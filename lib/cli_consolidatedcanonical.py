@@ -341,12 +341,12 @@ class ConsolidatedCanonicalProcessor:
             Consolidated issue data
         """
         issue_id = issue_data.get("id", "UNKNOWN")
-        log.debug(f"Processing issue: {issue_id}")
+        log.debug("Processing issue: %s", issue_id)
 
         # Store original timestamp before updating
         original_ts = issue_data.get("ts") or issue_data.get("cdt")
         if not original_ts:
-            log.error(f"Issue {issue_id} missing both 'ts' and 'cdt' fields")
+            log.error("Issue %s missing both 'ts' and 'cdt' fields", issue_id)
             sys.exit(1)
 
         # Convert to ISO8601 if needed
@@ -359,10 +359,64 @@ class ConsolidatedCanonicalProcessor:
         if "cdt" in issue_data:
             del issue_data["cdt"]  # Remove cdt if present
 
+        # Determine olr property if not present
+        if "olr" not in issue_data:
+            # Check content item types
+            content_items = issue_data.get("i", [])
+            has_non_page_article = False
+            has_page = False
+
+            log.debug(
+                "Inferring olr for issue %s (num content items=%d)",
+                issue_id,
+                len(content_items),
+            )
+
+            for ci in content_items:
+                ci_metadata = ci.get("m", {})
+                ci_type = ci_metadata.get("tp")
+
+                if ci_type == "article":
+                    has_non_page_article = True
+                    break  # Found article, no need to check further
+                elif ci_type == "page":
+                    has_page = True
+                    break  # Found page, can determine outcome
+
+            # Set olr based on content item types
+            if has_non_page_article:
+                issue_data["olr"] = True
+                log.info(
+                    "Inferred olr=true for issue %s (contains article content items)",
+                    issue_id,
+                )
+            elif has_page:
+                issue_data["olr"] = False
+                log.info(
+                    "Inferred olr=false for issue %s (contains only page content"
+                    " items)",
+                    issue_id,
+                )
+            else:
+                # Default to true if there are other content types (ads, images, etc.)
+                # or if we couldn't determine from content items
+                issue_data["olr"] = True
+                log.info(
+                    "Inferred olr=true for issue %s (default: no page or article types"
+                    " found)",
+                    issue_id,
+                )
+        else:
+            log.debug(
+                "Issue %s already has olr=%s, not inferring",
+                issue_id,
+                issue_data["olr"],
+            )
+
         # Process all content items
         content_items = issue_data.get("i", [])
         if not content_items:
-            log.warning(f"Issue {issue_id} has no content items")
+            log.warning("Issue %s has no content items", issue_id)
 
         processed_count = 0
         skipped_count = 0
@@ -379,8 +433,11 @@ class ConsolidatedCanonicalProcessor:
                     processed_count += 1
 
         log.info(
-            f"Consolidated {processed_count} content items in issue {issue_id}"
-            f" (skipped {skipped_count} items without enrichment data)"
+            "Consolidated %d content items in issue %s (skipped %d items without"
+            " enrichment data)",
+            processed_count,
+            issue_id,
+            skipped_count,
         )
 
         return issue_data
