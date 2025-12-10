@@ -507,7 +507,40 @@ class ConsolidatedCanonicalProcessor:
             ci_index = None
             error_path = list(e.absolute_path)
 
-            # Check if error path contains content item reference
+            # Hotfix: If validation fails once, attempt global coordinate correction
+            # Convert every "c" list in every content item from string to int where possible
+            try:
+                content_items = issue_data.get("i", [])
+                any_converted = False
+                for ci in content_items:
+                    if "c" in ci and isinstance(ci["c"], list):
+                        for idx, coord in enumerate(ci["c"]):
+                            if isinstance(coord, str):
+                                try:
+                                    ci["c"][idx] = int(coord)
+                                    any_converted = True
+                                except (ValueError, TypeError):
+                                    pass
+
+                if any_converted:
+                    log.warning(
+                        "Applied global coordinate conversion hotfix for issue %s",
+                        issue_id,
+                    )
+                    self.schema_validator.validate(issue_data)
+                    log.info(
+                        "Issue %s is now valid after global coordinate conversion",
+                        issue_id,
+                    )
+                    return True
+
+            except jsonschema.ValidationError:
+                # If still invalid, continue to standard error reporting below
+                pass
+            except Exception:
+                pass
+
+            # Check if error path contains content item reference for detailed reporting
             # Path format: ['i', index, 'm', 'consolidated_ocrqa']
             if len(error_path) >= 2 and error_path[0] == "i":
                 ci_index = error_path[1]
