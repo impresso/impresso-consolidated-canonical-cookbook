@@ -289,6 +289,17 @@ class ConsolidatedCanonicalProcessor:
             log.error("Content item missing 'id' field")
             sys.exit(1)
 
+        # Clean up None values for optional string fields that should only be present when meaningful
+        optional_string_fields = ["t", "iiif_link", "var_t", "archival_note"]
+        for field in optional_string_fields:
+            if field in ci_metadata and ci_metadata[field] is None:
+                log.debug(
+                    "Removing field '%s' with None value from content item %s",
+                    field,
+                    ci_id,
+                )
+                del ci_metadata[field]
+
         # Always rename lg → lg_original if it exists (for all content items)
         if "lg" in ci_metadata:
             ci_metadata["lg_original"] = ci_metadata.pop("lg")
