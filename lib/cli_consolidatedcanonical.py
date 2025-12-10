@@ -354,6 +354,24 @@ class ConsolidatedCanonicalProcessor:
         issue_id = issue_data.get("id", "UNKNOWN")
         log.debug("Processing issue: %s", issue_id)
 
+        # Clean up None values for optional fields at issue level
+        optional_issue_fields = {
+            "s": "array",  # text styles
+            "n": "string or array",  # notes
+            "media_title_variant": "string",
+            "iiif_manifest_uri": "string",
+            "rc": "string",  # radio channel
+            "rp": "string",  # radio program
+        }
+        for field, field_type in optional_issue_fields.items():
+            if field in issue_data and issue_data[field] is None:
+                log.debug(
+                    "Removing field '%s' with None value from issue %s",
+                    field,
+                    issue_id,
+                )
+                del issue_data[field]
+
         # Store original timestamp before updating
         original_ts = issue_data.get("ts") or issue_data.get("cdt")
         if not original_ts:
