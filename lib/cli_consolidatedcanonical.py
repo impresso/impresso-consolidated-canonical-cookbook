@@ -289,16 +289,20 @@ class ConsolidatedCanonicalProcessor:
             log.error("Content item missing 'id' field")
             sys.exit(1)
 
-        # Clean up None values for optional string fields that should only be present when meaningful
+        # Clean up None/empty values for optional string fields that should only be present when meaningful
         optional_string_fields = ["t", "iiif_link", "var_t", "archival_note"]
         for field in optional_string_fields:
-            if field in ci_metadata and ci_metadata[field] is None:
-                log.debug(
-                    "Removing field '%s' with None value from content item %s",
-                    field,
-                    ci_id,
-                )
-                del ci_metadata[field]
+            if field in ci_metadata:
+                value = ci_metadata[field]
+                # Remove if None or empty string
+                if value is None or (isinstance(value, str) and value.strip() == ""):
+                    log.debug(
+                        "Removing field '%s' with None/empty value from content"
+                        " item %s",
+                        field,
+                        ci_id,
+                    )
+                    del ci_metadata[field]
 
         # Always rename lg → lg_original if it exists (for all content items)
         if "lg" in ci_metadata:
@@ -354,7 +358,7 @@ class ConsolidatedCanonicalProcessor:
         issue_id = issue_data.get("id", "UNKNOWN")
         log.debug("Processing issue: %s", issue_id)
 
-        # Clean up None values for optional fields at issue level
+        # Clean up None/empty values for optional fields at issue level
         optional_issue_fields = {
             "s": "array",  # text styles
             "n": "string or array",  # notes
@@ -364,13 +368,22 @@ class ConsolidatedCanonicalProcessor:
             "rp": "string",  # radio program
         }
         for field, field_type in optional_issue_fields.items():
-            if field in issue_data and issue_data[field] is None:
-                log.debug(
-                    "Removing field '%s' with None value from issue %s",
-                    field,
-                    issue_id,
-                )
-                del issue_data[field]
+            if field in issue_data:
+                value = issue_data[field]
+                # Remove if None or (for strings) empty
+                should_remove = False
+                if value is None:
+                    should_remove = True
+                elif isinstance(value, str) and value.strip() == "":
+                    should_remove = True
+
+                if should_remove:
+                    log.debug(
+                        "Removing field '%s' with None/empty value from issue %s",
+                        field,
+                        issue_id,
+                    )
+                    del issue_data[field]
 
         # Store original timestamp before updating
         original_ts = issue_data.get("ts") or issue_data.get("cdt")
