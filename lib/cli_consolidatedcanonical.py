@@ -15,16 +15,23 @@ The consolidation process:
    for analysis, etc.) are logged and skipped but do not cause processing to fail.
 
 3. **Field Transformations**:
+   - Adds `media_title` from metadata JSON (if provided via --metadata-json)
+   - Moves `var_t` from content items to issue-level `media_title_variant`
+     (only if different from media_title)
+   - Removes legacy `var_t` fields from all content items
    - Renames `lg` → `lg_original` (if exists in canonical)
    - Adds `consolidated_lg` from enrichment `lg` field
    - Adds `consolidated_ocrqa` from enrichment `ocrqa` field
+   - Adds `consolidated_char_len` from enrichment `len` field
    - Adds `consolidated_langident_run_id` from run configuration
+   - Adds `consolidated_reocr_applied` (always False, re-OCR not yet implemented)
    - Sets `consolidated` flag to `true`
    - Stores original `ts` in `consolidated_ts_original`
    - Updates `ts` to current processing timestamp
 
 4. **Schema Compliance**: Produces output conforming to the consolidated canonical
-   issue schema with all required `consolidated_*` properties.
+   issue schema with all required `consolidated_*` properties. All consolidated fields
+   are set together for text content items with enrichment data.
 
 Usage:
     $ python cli_consolidatedcanonical.py \
@@ -36,14 +43,24 @@ Usage:
 
 Schema Reference:
     The output conforms to issue.schema.json with these consolidated properties:
+    
+    At issue level:
     - consolidated: boolean (true)
     - consolidated_ts_original: string (original timestamp)
+    - media_title: string (from metadata JSON, if provided)
+    - media_title_variant: string (from content item var_t fields,
+      only if different from media_title)
+    
+    Note: Legacy var_t fields are removed from content items and consolidated
+    at the issue level.
     
     Per content item metadata (when enrichment data available):
     - lg_original: string|null (original language if existed)
     - consolidated_lg: string|null (computed language)
-    - consolidated_ocrqa: number
+    - consolidated_ocrqa: number (0-1 range, may be null)
+    - consolidated_char_len: integer (character count)
     - consolidated_langident_run_id: string
+    - consolidated_reocr_applied: boolean (always False for now)
     
 Note:
     Content items without enrichment data are preserved in the output without
@@ -149,6 +166,12 @@ def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
         required=True,
     )
     parser.add_argument(
+        "--metadata-json",
+        dest="metadata_json",
+        help="Path to JSON file with media metadata (media_alias, media_title, etc.)",
+        required=False,
+    )
+    parser.add_argument(
         "--validate",
         action="store_true",
         help=(
@@ -176,6 +199,7 @@ class ConsolidatedCanonicalProcessor:
         log_level: str = "INFO",
         log_file: Optional[str] = None,
         validate: bool = False,
+        metadata_json: Optional[str] = None,
     ) -> None:
         """
         Initialize the ConsolidatedCanonicalProcessor.
@@ -188,6 +212,7 @@ class ConsolidatedCanonicalProcessor:
             log_level: Logging level (default: "INFO")
             log_file: Path to log file (default: None)
             validate: Whether to validate output against schema (default: False)
+            metadata_json: Path to JSON file with media metadata (default: None)
         """
         self.canonical_input = canonical_input
         self.enrichment_input = enrichment_input
@@ -196,6 +221,7 @@ class ConsolidatedCanonicalProcessor:
         self.log_level = log_level
         self.log_file = log_file
         self.validate = validate
+        self.metadata_json = metadata_json
 
         # Configure the module-specific logger
         setup_logging(self.log_level, self.log_file, logger=log)
@@ -204,6 +230,11 @@ class ConsolidatedCanonicalProcessor:
         self.s3_client = get_s3_client()
         self.timestamp = get_timestamp()
 
+        # Load metadata JSON if provided
+        self.media_metadata: Dict[str, Dict[str, Any]] = {}
+        if self.metadata_json:
+            self._load_media_metadata()
+
         # Initialize validator if validation is enabled
         if self.validate:
             self.schema_validator = initialize_validator()
@@ -211,6 +242,42 @@ class ConsolidatedCanonicalProcessor:
 
         log.info(f"Initialized processor with timestamp: {self.timestamp}")
         log.info(f"Langident run ID: {self.langident_run_id}")
+
+    def _load_media_metadata(self) -> None:
+        """
+        Load media metadata from JSON file.
+
+        Creates a dictionary keyed by media_alias for efficient lookup.
+        Logs warning and continues if file cannot be read.
+        """
+        if not self.metadata_json:
+            return
+
+        log.info(f"Loading media metadata from: {self.metadata_json}")
+
+        try:
+            with smart_open(
+                self.metadata_json,
+                "rt",
+                encoding="utf-8",
+                transport_params=get_transport_params(self.metadata_json),
+            ) as f:
+                metadata_list = json.load(f)
+
+            # Create lookup dictionary keyed by media_alias
+            for item in metadata_list:
+                media_alias = item.get("media_alias")
+                if media_alias:
+                    self.media_metadata[media_alias] = item
+
+            log.info(f"Loaded metadata for {len(self.media_metadata)} media aliases")
+
+        except FileNotFoundError:
+            log.warning(f"Metadata file not found: {self.metadata_json}")
+        except json.JSONDecodeError as e:
+            log.warning(f"Invalid JSON in metadata file: {e}")
+        except Exception as e:
+            log.warning(f"Error reading metadata file: {e}")
 
     def load_enrichments(self) -> Dict[str, Dict[str, Any]]:
         """
@@ -289,8 +356,11 @@ class ConsolidatedCanonicalProcessor:
             log.error("Content item missing 'id' field")
             sys.exit(1)
 
-        # Clean up None/empty values for optional string fields that should only be present when meaningful
-        optional_string_fields = ["t", "iiif_link", "var_t", "archival_note"]
+        # Clean up None/empty values for optional string fields that should
+        # only be present when meaningful.
+        # Note: var_t is handled separately in process_issue() - collected
+        # for issue-level media_title_variant, then deleted from content items.
+        optional_string_fields = ["t", "iiif_link", "archival_note"]
         for field in optional_string_fields:
             if field in ci_metadata:
                 value = ci_metadata[field]
@@ -329,14 +399,13 @@ class ConsolidatedCanonicalProcessor:
 
         enrichment = enrichments[ci_id]
 
-        # Add consolidated fields
+        # Add consolidated fields (all fields set together for consistency)
         ci_metadata["consolidated_lg"] = enrichment["lg"]
         ci_metadata["consolidated_ocrqa"] = enrichment["ocrqa"]
         ci_metadata["consolidated_char_len"] = enrichment["len"]
         ci_metadata["consolidated_langident_run_id"] = self.langident_run_id
-
-        # Note: consolidated_reocr_applied and consolidated_reocr_run_id
-        # should be added here if re-OCR information is available
+        # Always set consolidated_reocr_applied to False (re-OCR not yet implemented)
+        ci_metadata["consolidated_reocr_applied"] = False
 
         return ci_metadata
 
@@ -455,6 +524,21 @@ class ConsolidatedCanonicalProcessor:
                 issue_data["olr"],
             )
 
+        # Extract media_alias from issue ID (everything before first hyphen)
+        media_alias = issue_id.split("-")[0] if "-" in issue_id else issue_id
+
+        # Set media_title from metadata if available
+        if media_alias in self.media_metadata:
+            media_title = self.media_metadata[media_alias].get("media_title")
+            if media_title:
+                issue_data["media_title"] = media_title
+                log.debug(
+                    "Set media_title='%s' for issue %s (media_alias=%s)",
+                    media_title,
+                    issue_id,
+                    media_alias,
+                )
+
         # Process all content items
         content_items = issue_data.get("i", [])
         if not content_items:
@@ -462,9 +546,23 @@ class ConsolidatedCanonicalProcessor:
 
         processed_count = 0
         skipped_count = 0
+        var_t_values = set()
+
         for ci in content_items:
             ci_metadata = ci.get("m", {})
             if ci_metadata:
+                # Collect var_t values before consolidation and then remove it
+                var_t = ci_metadata.get("var_t")
+                if var_t:
+                    var_t_values.add(var_t)
+                    # Delete var_t from content item (legacy, moved to issue level)
+                    del ci_metadata["var_t"]
+                    log.debug(
+                        "Removed legacy var_t='%s' from content item %s",
+                        var_t,
+                        ci_metadata.get("id", "UNKNOWN"),
+                    )
+
                 updated_metadata = self.consolidate_content_item(
                     ci_metadata, enrichments
                 )
@@ -473,6 +571,30 @@ class ConsolidatedCanonicalProcessor:
                     skipped_count += 1
                 else:
                     processed_count += 1
+
+        # Set media_title_variant only if var_t differs from media_title
+        if var_t_values:
+            # Get first var_t value
+            first_var_t = next(iter(var_t_values))
+            media_title = issue_data.get("media_title")
+
+            # Only set media_title_variant if it differs from media_title
+            if first_var_t != media_title:
+                issue_data["media_title_variant"] = first_var_t
+                log.debug(
+                    "Set media_title_variant='%s' for issue %s (differs from "
+                    "media_title='%s')",
+                    first_var_t,
+                    issue_id,
+                    media_title,
+                )
+            else:
+                log.debug(
+                    "Skipping media_title_variant for issue %s (var_t='%s' "
+                    "matches media_title)",
+                    issue_id,
+                    first_var_t,
+                )
 
         log.info(
             "Consolidated %d content items in issue %s (skipped %d items without"
@@ -507,8 +629,9 @@ class ConsolidatedCanonicalProcessor:
             ci_index = None
             error_path = list(e.absolute_path)
 
-            # Hotfix: If validation fails once, attempt global coordinate correction
-            # Convert every "c" list in every content item from string to int where possible
+            # Hotfix: If validation fails once, attempt global coordinate
+            # correction. Convert every "c" list in every content item from
+            # string to int where possible.
             try:
                 content_items = issue_data.get("i", [])
                 any_converted = False
@@ -692,6 +815,7 @@ def main(args: Optional[List[str]] = None) -> None:
         log_level=options.log_level,
         log_file=options.log_file,
         validate=options.validate,
+        metadata_json=options.metadata_json,
     )
 
     # Log the parsed options after logger is configured
