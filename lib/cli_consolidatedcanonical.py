@@ -617,6 +617,17 @@ class ConsolidatedCanonicalProcessor:
         Returns:
             bool: True if the issue is valid, False otherwise
         """
+        # Hotfix: Normalize legacy "picture" type to "image"
+        content_items = issue_data.get("i", [])
+        for ci in content_items:
+            ci_metadata = ci.get("m", {})
+            if ci_metadata.get("tp") == "picture":
+                ci_metadata["tp"] = "image"
+                log.debug(
+                    "Normalized legacy type 'picture' -> 'image' for content item %s",
+                    ci_metadata.get("id", "UNKNOWN"),
+                )
+
         try:
             self.schema_validator.validate(issue_data)
             log.debug("Issue %s is valid", issue_data.get("id", "UNKNOWN"))
