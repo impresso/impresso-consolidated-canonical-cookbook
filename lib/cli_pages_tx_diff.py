@@ -16,7 +16,6 @@ Example:
 """
 
 import argparse
-import difflib
 import json
 import logging
 import math
@@ -37,10 +36,22 @@ log = logging.getLogger(__name__)
 
 
 DiffEntry = Dict[str, str]
+LineEntry = Dict[str, Any]
+LineStats = Dict[str, int]
+MIN_LINE_OVERLAP = 0.3
 
 
 def emit_progress(message: str) -> None:
     print(message, file=sys.stderr, flush=True)
+
+
+def make_line_stats() -> LineStats:
+    return {"equal_lines": 0, "different_lines": 0}
+
+
+def merge_line_stats(target: LineStats, source: LineStats) -> None:
+    target["equal_lines"] += source["equal_lines"]
+    target["different_lines"] += source["different_lines"]
 
 
 def parse_subsample(value: str) -> float:
@@ -223,34 +234,126 @@ def render_line_text(tokens: Sequence[dict]) -> str:
     return "".join(pieces).strip()
 
 
-def extract_lines(page: dict) -> List[Tuple[str, str]]:
-    lines: List[Tuple[str, str]] = []
+def extract_lines(page: dict) -> List[LineEntry]:
+    lines: List[LineEntry] = []
     for region_index, region in enumerate(page.get("r", [])):
         for paragraph_index, paragraph in enumerate(region.get("p", [])):
             for line_index, line in enumerate(paragraph.get("l", [])):
                 path = f"r[{region_index}].p[{paragraph_index}].l[{line_index}]"
-                lines.append((path, render_line_text(line.get("t", []))))
+                lines.append(
+                    {
+                        "path": path,
+                        "text": render_line_text(line.get("t", [])),
+                        "coords": line.get("c", []),
+                    }
+                )
     return lines
 
 
-def unified_text_diff(left_text: str, right_text: str) -> List[str]:
-    return list(
-        difflib.unified_diff(
-            [left_text + "\n"],
-            [right_text + "\n"],
-            fromfile="left",
-            tofile="right",
-            lineterm="",
-        )
-    )
+def intersection_size(first: Sequence[int], second: Sequence[int]) -> int:
+    if len(first) != 4 or len(second) != 4:
+        return 0
+
+    first_x1, first_y1, first_width, first_height = first
+    second_x1, second_y1, second_width, second_height = second
+
+    first_x2 = first_x1 + first_width
+    first_y2 = first_y1 + first_height
+    second_x2 = second_x1 + second_width
+    second_y2 = second_y1 + second_height
+
+    overlap_width = min(first_x2, second_x2) - max(first_x1, second_x1)
+    overlap_height = min(first_y2, second_y2) - max(first_y1, second_y1)
+    if overlap_width <= 0 or overlap_height <= 0:
+        return 0
+
+    return overlap_width * overlap_height
+
+
+def rectangle_area(coords: Sequence[int]) -> int:
+    if len(coords) != 4:
+        return 0
+    return max(0, coords[2]) * max(0, coords[3])
+
+
+def line_overlap_score(left_line: LineEntry, right_line: LineEntry) -> float:
+    left_area = rectangle_area(left_line["coords"])
+    right_area = rectangle_area(right_line["coords"])
+    if left_area == 0 or right_area == 0:
+        return 0.0
+
+    overlap_area = intersection_size(left_line["coords"], right_line["coords"])
+    if overlap_area == 0:
+        return 0.0
+
+    return overlap_area / min(left_area, right_area)
+
+
+def line_center_distance(
+    left_line: LineEntry, right_line: LineEntry
+) -> Tuple[float, float]:
+    left_coords = left_line["coords"]
+    right_coords = right_line["coords"]
+    if len(left_coords) != 4 or len(right_coords) != 4:
+        return (float("inf"), float("inf"))
+
+    left_center_y = left_coords[1] + (left_coords[3] / 2)
+    right_center_y = right_coords[1] + (right_coords[3] / 2)
+    left_center_x = left_coords[0] + (left_coords[2] / 2)
+    right_center_x = right_coords[0] + (right_coords[2] / 2)
+    return (abs(left_center_y - right_center_y), abs(left_center_x - right_center_x))
+
+
+def match_lines_by_overlap(
+    left_lines: List[LineEntry], right_lines: List[LineEntry]
+) -> Tuple[List[Tuple[int, int]], List[int], List[int]]:
+    candidates: List[Tuple[float, float, float, int, int]] = []
+    for left_index, left_line in enumerate(left_lines):
+        for right_index, right_line in enumerate(right_lines):
+            overlap_score = line_overlap_score(left_line, right_line)
+            if overlap_score < MIN_LINE_OVERLAP:
+                continue
+            center_y_distance, center_x_distance = line_center_distance(
+                left_line, right_line
+            )
+            candidates.append(
+                (
+                    -overlap_score,
+                    center_y_distance,
+                    center_x_distance,
+                    left_index,
+                    right_index,
+                )
+            )
+
+    candidates.sort()
+    matches: List[Tuple[int, int]] = []
+    used_left: set[int] = set()
+    used_right: set[int] = set()
+
+    for _, _, _, left_index, right_index in candidates:
+        if left_index in used_left or right_index in used_right:
+            continue
+        used_left.add(left_index)
+        used_right.add(right_index)
+        matches.append((left_index, right_index))
+
+    unmatched_left = [
+        index for index in range(len(left_lines)) if index not in used_left
+    ]
+    unmatched_right = [
+        index for index in range(len(right_lines)) if index not in used_right
+    ]
+    return matches, unmatched_left, unmatched_right
 
 
 def compare_pages(
     left_pages: Dict[str, dict],
     right_pages: Dict[str, dict],
     relative_key: str,
-) -> List[DiffEntry]:
+) -> Tuple[List[DiffEntry], LineStats]:
     report: List[DiffEntry] = []
+    stats = make_line_stats()
 
     left_page_ids = set(left_pages)
     right_page_ids = set(right_pages)
@@ -259,6 +362,7 @@ def compare_pages(
     missing_right = sorted(left_page_ids - right_page_ids)
 
     for page_id in missing_left:
+        stats["different_lines"] += len(extract_lines(right_pages[page_id]))
         report.append(
             {
                 "file": relative_key,
@@ -270,6 +374,7 @@ def compare_pages(
             }
         )
     for page_id in missing_right:
+        stats["different_lines"] += len(extract_lines(left_pages[page_id]))
         report.append(
             {
                 "file": relative_key,
@@ -285,46 +390,25 @@ def compare_pages(
         left_lines = extract_lines(left_pages[page_id])
         right_lines = extract_lines(right_pages[page_id])
 
-        max_len = max(len(left_lines), len(right_lines))
-        for index in range(max_len):
-            left_entry = left_lines[index] if index < len(left_lines) else None
-            right_entry = right_lines[index] if index < len(right_lines) else None
+        matches, unmatched_left, unmatched_right = match_lines_by_overlap(
+            left_lines, right_lines
+        )
 
-            if left_entry is None:
-                assert right_entry is not None
-                report.append(
-                    {
-                        "file": relative_key,
-                        "page": page_id,
-                        "path": right_entry[0],
-                        "kind": "extra-right-line",
-                        "left": "<missing>",
-                        "right": right_entry[1],
-                    }
-                )
-                continue
-
-            if right_entry is None:
-                report.append(
-                    {
-                        "file": relative_key,
-                        "page": page_id,
-                        "path": left_entry[0],
-                        "kind": "extra-left-line",
-                        "left": left_entry[1],
-                        "right": "<missing>",
-                    }
-                )
-                continue
-
-            left_path, left_text = left_entry
-            right_path, right_text = right_entry
+        for left_index, right_index in matches:
+            left_entry = left_lines[left_index]
+            right_entry = right_lines[right_index]
+            left_text = left_entry["text"]
+            right_text = right_entry["text"]
 
             if left_text == right_text:
+                stats["equal_lines"] += 1
                 continue
 
+            stats["different_lines"] += 1
             path = (
-                left_path if left_path == right_path else f"{left_path} != {right_path}"
+                left_entry["path"]
+                if left_entry["path"] == right_entry["path"]
+                else f"{left_entry['path']} ~= {right_entry['path']}"
             )
             report.append(
                 {
@@ -337,20 +421,43 @@ def compare_pages(
                 }
             )
 
-    return report
+        for left_index in unmatched_left:
+            left_entry = left_lines[left_index]
+            stats["different_lines"] += 1
+            report.append(
+                {
+                    "file": relative_key,
+                    "page": page_id,
+                    "path": left_entry["path"],
+                    "kind": "extra-left-line",
+                    "left": left_entry["text"],
+                    "right": "<missing>",
+                }
+            )
+
+        for right_index in unmatched_right:
+            right_entry = right_lines[right_index]
+            stats["different_lines"] += 1
+            report.append(
+                {
+                    "file": relative_key,
+                    "page": page_id,
+                    "path": right_entry["path"],
+                    "kind": "extra-right-line",
+                    "left": "<missing>",
+                    "right": right_entry["text"],
+                }
+            )
+
+    return report, stats
 
 
 def format_diff_entry(diff: DiffEntry) -> List[str]:
-    lines = [
+    return [
         f"File {diff['file']} | page {diff['page']} | {diff['path']} | {diff['kind']}",
         f"  left : {diff['left']}",
         f"  right: {diff['right']}",
     ]
-    if diff["kind"] == "line-text-diff":
-        lines.extend(
-            f"  {line}" for line in unified_text_diff(diff["left"], diff["right"])
-        )
-    return lines
 
 
 def compare_all_files(
@@ -359,7 +466,7 @@ def compare_all_files(
     seed: Optional[int],
     subsample: float,
     s3_client: Any,
-) -> Tuple[List[DiffEntry], List[str], List[str], int, int]:
+) -> Tuple[List[DiffEntry], List[str], List[str], int, int, LineStats]:
     left_objects, right_objects = list_relative_objects(left_uri, right_uri, s3_client)
     left_keys = set(left_objects)
     right_keys = set(right_objects)
@@ -379,6 +486,7 @@ def compare_all_files(
     )
 
     all_diffs: List[DiffEntry] = []
+    all_stats = make_line_stats()
     for index, relative_key in enumerate(selected_keys, start=1):
         if index == 1 or index % 10 == 0 or index == len(selected_keys):
             emit_progress(
@@ -386,7 +494,9 @@ def compare_all_files(
             )
         left_pages = load_pages(left_objects[relative_key])
         right_pages = load_pages(right_objects[relative_key])
-        all_diffs.extend(compare_pages(left_pages, right_pages, relative_key))
+        page_diffs, page_stats = compare_pages(left_pages, right_pages, relative_key)
+        all_diffs.extend(page_diffs)
+        merge_line_stats(all_stats, page_stats)
 
     return (
         all_diffs,
@@ -394,6 +504,7 @@ def compare_all_files(
         extra_right_files,
         len(selected_keys),
         len(common_keys),
+        all_stats,
     )
 
 
@@ -410,17 +521,26 @@ def print_all_files_report(
         extra_right_files,
         selected_count,
         common_count,
+        line_stats,
     ) = compare_all_files(left_uri, right_uri, seed, subsample, s3_client)
+
+    inspected_lines = line_stats["equal_lines"] + line_stats["different_lines"]
 
     if not all_diffs and not extra_left_files and not extra_right_files:
         print("EQUAL")
         if subsample < 1.0:
             print(f"Checked {selected_count}/{common_count} matching files")
+        print(f"Inspected lines: {inspected_lines}")
+        print(f"Equal lines: {line_stats['equal_lines']}")
+        print(f"Different lines: {line_stats['different_lines']}")
         return 0
 
     print("DIFFERENT")
     if subsample < 1.0:
         print(f"Checked {selected_count}/{common_count} matching files")
+    print(f"Inspected lines: {inspected_lines}")
+    print(f"Equal lines: {line_stats['equal_lines']}")
+    print(f"Different lines: {line_stats['different_lines']}")
     if extra_left_files:
         print(f"Extra files on left: {len(extra_left_files)}")
         for relative_key in extra_left_files[:3]:
@@ -431,7 +551,7 @@ def print_all_files_report(
             print(f"  right only: {relative_key}")
 
     print(f"Differing line entries: {len(all_diffs)}")
-    sample_size = min(3, len(all_diffs))
+    sample_size = min(20, len(all_diffs))
     if sample_size:
         picker = random.Random(seed)
         print(f"Sampled differing lines: {sample_size}")
@@ -471,11 +591,15 @@ def main(args: Optional[List[str]] = None) -> int:
 
     left_pages = load_pages(left_file)
     right_pages = load_pages(right_file)
-    report = compare_pages(left_pages, right_pages, relative_key)
+    report, line_stats = compare_pages(left_pages, right_pages, relative_key)
+    inspected_lines = line_stats["equal_lines"] + line_stats["different_lines"]
 
     print(f"Selected file: {relative_key}")
     print(f"Left:  {left_file}")
     print(f"Right: {right_file}")
+    print(f"Inspected lines: {inspected_lines}")
+    print(f"Equal lines: {line_stats['equal_lines']}")
+    print(f"Different lines: {line_stats['different_lines']}")
 
     if not report:
         print("EQUAL")
