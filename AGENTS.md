@@ -75,7 +75,7 @@ fatal error. Images are skipped for consolidation fields.
 
 The processor currently:
 
-- renames `lg` or legacy `l` to `lg_original` on content item metadata;
+- preserves original `lg` or legacy `l` in `lg_original` while keeping schema-required `lg`;
 - adds `consolidated_lg`, `consolidated_ocrqa`,
   `consolidated_char_len`, `consolidated_langident_run_id`, and
   `consolidated_reocr_applied` when enrichment data exists;
