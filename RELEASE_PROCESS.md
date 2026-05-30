@@ -3,10 +3,10 @@
 This document describes the release process for the Impresso consolidated
 canonical processing pipeline.
 
-The process is intentionally tag-first and reproducibility-focused: release notes
-and final release metadata must be committed before the git tag is created, so the
-tagged repository state and the GitHub release description describe the same
-snapshot.
+The process is intentionally merge-first and reproducibility-focused: release
+notes and final release metadata must be committed and merged to `main` before
+the git tag is created, so the tagged repository state, `main`, and the GitHub
+release description describe the same snapshot.
 
 ## Release Workflow
 
@@ -14,14 +14,23 @@ snapshot.
 2. **Prepare**: update documentation, configuration examples, and changelog.
 3. **Verify**: run local sample checks and dry-run Make targets before any S3 run.
 4. **Document**: write release notes in a committed markdown file.
-5. **Commit**: commit release notes and any final release metadata.
-6. **Tag**: create an annotated git tag on that exact commit.
+5. **Merge**: merge the release branch to `main`.
+6. **Tag**: create an annotated git tag from the merged commit on `main`.
 7. **Publish**: create the GitHub release from the committed release notes file.
 8. **Follow up**: announce the release and monitor the first production runs.
 
-Do not write or substantially revise release notes after creating the tag. If a
-published release note needs correction, edit the committed release note file and
-use `gh release edit --notes-file`, but treat that as an exception.
+The normal path is:
+
+1. prepare release changes on a branch,
+2. merge that branch through a pull request,
+3. switch to the updated `main`,
+4. tag the merged commit on `main`,
+5. publish the GitHub release from that tag.
+
+Do not create release tags from feature branches. Do not write or substantially
+revise release notes after creating the tag. If a published release note needs
+correction, edit the committed release note file, merge that correction to
+`main`, and use `gh release edit --notes-file`, but treat that as an exception.
 
 ## Version Numbering
 
@@ -79,6 +88,15 @@ git status --short
 
 Local build output, credentials, and private configuration must not be included in
 the release commit.
+
+Confirm the release branch target is `main` and that the final tag will be
+created only after the release branch has been merged:
+
+```bash
+git branch --show-current
+git fetch origin
+git log origin/main..HEAD --oneline
+```
 
 ### 2. Update Documentation
 
@@ -233,7 +251,7 @@ git diff v1.0.0..HEAD --name-status
 ### 1. Commit Release Notes And Final Metadata
 
 Before tagging, commit the release notes and final documentation/configuration
-updates:
+updates on the release branch:
 
 ```bash
 git add CHANGELOG.md README.md RELEASE_NOTES_v1.1.0.md configs/
@@ -243,14 +261,32 @@ git commit -m "Prepare release v1.1.0"
 Adjust the paths to match the actual release changes. Do not add private local
 configuration, credentials, or transient build output.
 
-### 2. Create The Git Tag
+### 2. Merge To Main
+
+Open a pull request for the release branch and merge it to `main`. After the pull
+request is merged, update the local `main` branch:
 
 ```bash
+git checkout main
+git pull --ff-only origin main
+```
+
+Confirm that `main` contains the release notes and intended release commit:
+
+```bash
+git log -1 --oneline
+test -f RELEASE_NOTES_v1.1.0.md
+```
+
+### 3. Create The Git Tag From Main
+
+```bash
+git checkout main
 git tag -a v1.1.0 -m "Release v1.1.0: radio audio integration"
 git push origin v1.1.0
 ```
 
-### 3. Create The GitHub Release
+### 4. Create The GitHub Release
 
 Use the committed notes file:
 
@@ -263,7 +299,7 @@ gh release create v1.1.0 \
 
 For pre-releases, add `--prerelease`.
 
-### 4. Correct An Existing Release If Needed
+### 5. Correct An Existing Release If Needed
 
 ```bash
 gh release edit v1.1.0 \
@@ -274,6 +310,7 @@ gh release edit v1.1.0 \
 ## Post-Release Tasks
 
 - [ ] Confirm the release tag is visible on GitHub.
+- [ ] Confirm the release tag points to a commit reachable from `main`.
 - [ ] Confirm the GitHub release description matches the committed release notes.
 - [ ] Ensure release documentation is present on the main branch.
 - [ ] Notify maintainers and pipeline users.
@@ -303,7 +340,7 @@ For critical fixes after a release:
 
 5. Publish the GitHub release from the committed hotfix notes.
 
-6. Merge the hotfix branch back to the main development branch.
+6. Merge the hotfix branch back to `main`.
 
 ## Release Checklist
 
@@ -319,7 +356,9 @@ For critical fixes after a release:
 - [ ] Python syntax check run.
 - [ ] Relevant Make dry runs completed.
 - [ ] S3-affecting commands reviewed before execution.
-- [ ] Annotated tag created.
+- [ ] Release branch merged to `main`.
+- [ ] Local `main` updated with `git pull --ff-only origin main`.
+- [ ] Annotated tag created from `main`.
 - [ ] Tag pushed.
 - [ ] GitHub release created from committed notes.
 - [ ] Team notified.
