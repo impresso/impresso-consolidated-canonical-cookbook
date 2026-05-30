@@ -19,7 +19,7 @@ The consolidation process:
    - Moves `var_t` from content items to issue-level `media_title_variant`
      (only if different from media_title)
    - Removes legacy `var_t` fields from all content items
-   - Renames `lg` → `lg_original` (if exists in canonical)
+   - Copies original `lg` or legacy `l` to `lg_original` (if exists)
    - Adds `consolidated_lg` from enrichment `lg` field
    - Adds `consolidated_ocrqa` from enrichment `ocrqa` field
    - Adds `consolidated_char_len` from enrichment `len` field
@@ -77,7 +77,7 @@ import sys
 from typing import Dict, List, Optional, Any
 from smart_open import open as smart_open  # type: ignore
 import jsonschema
-from jsonschema import Draft7Validator
+from jsonschema.validators import validator_for
 import re
 from datetime import datetime
 
@@ -96,7 +96,7 @@ IMPRESSO_SCHEMA = "issue.schema.json"
 
 def initialize_validator(
     schema_base_uri: str = SCHEMA_BASE_URI, schema: str = IMPRESSO_SCHEMA
-) -> jsonschema.Draft7Validator:
+) -> Any:
     """
     Initializes the schema validator.
 
@@ -105,7 +105,7 @@ def initialize_validator(
         schema: Schema filename
 
     Returns:
-        Draft7Validator: Configured validator instance
+        jsonschema.Validator: Configured validator instance
     """
     with smart_open(
         schema_base_uri + schema,
@@ -113,9 +113,9 @@ def initialize_validator(
     ) as f:
         schema_dict = json.load(f)
 
-    # Directly create the validator without a registry or a resolver
-    validator = Draft7Validator(schema_dict)
-    return validator
+    validator_cls = validator_for(schema_dict)
+    validator_cls.check_schema(schema_dict)
+    return validator_cls(schema_dict)
 
 
 def parse_arguments(args: Optional[List[str]] = None) -> argparse.Namespace:
@@ -374,14 +374,15 @@ class ConsolidatedCanonicalProcessor:
                     )
                     del ci_metadata[field]
 
-        # Always rename lg → lg_original if it exists (for all content items)
+        # Preserve original language provenance while keeping schema-required lg.
         if "lg" in ci_metadata:
-            ci_metadata["lg_original"] = ci_metadata.pop("lg")
-            log.debug(f"Renamed lg → lg_original for {ci_id}")
+            ci_metadata["lg_original"] = ci_metadata["lg"]
+            log.debug("Copied lg to lg_original for %s", ci_id)
         elif "l" in ci_metadata:
             # Handle legacy 'l' field
             ci_metadata["lg_original"] = ci_metadata.pop("l")
-            log.debug(f"Renamed l → lg_original for {ci_id}")
+            ci_metadata["lg"] = ci_metadata["lg_original"]
+            log.debug("Renamed legacy l to lg/lg_original for %s", ci_id)
 
         # Skip consolidation for image content items (they don't have lg/ocrqa)
         ci_type = ci_metadata.get("tp")
@@ -401,6 +402,7 @@ class ConsolidatedCanonicalProcessor:
 
         # Add consolidated fields (all fields set together for consistency)
         ci_metadata["consolidated_lg"] = enrichment["lg"]
+        ci_metadata["lg"] = enrichment["lg"]
         ci_metadata["consolidated_ocrqa"] = enrichment["ocrqa"]
         ci_metadata["consolidated_char_len"] = enrichment["len"]
         ci_metadata["consolidated_langident_run_id"] = self.langident_run_id
@@ -470,8 +472,13 @@ class ConsolidatedCanonicalProcessor:
         if "cdt" in issue_data:
             del issue_data["cdt"]  # Remove cdt if present
 
-        # Determine olr property if not present
-        if "olr" not in issue_data:
+        # `olr` describes print/page layout. Audio issues should not gain it
+        # through fallback inference, and any legacy value is removed.
+        if issue_data.get("sm") == "audio":
+            if "olr" in issue_data:
+                del issue_data["olr"]
+                log.debug("Removed olr from audio issue %s", issue_id)
+        elif "olr" not in issue_data:
             # Check content item types
             content_items = issue_data.get("i", [])
             has_non_page_article = False
