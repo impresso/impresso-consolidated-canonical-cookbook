@@ -3,6 +3,7 @@
 **Planned tag:** `v1.1.0`
 **Release type:** Minor release
 **Previous release:** `v1.0.0`
+**Consolidated output version:** `v2025-12-04`
 **Current branch:** `integrate-radio`
 **Target repository:** `impresso/impresso-consolidated-canonical-cookbook`
 **Date prepared:** 2026-05-30
@@ -33,10 +34,9 @@ Release is ready to tag when:
 - release notes are committed;
 - top-level release process and radio release plan are committed;
 - README/config examples accurately describe radio/audio use;
-- untracked fixture/support files are either intentionally tracked or excluded;
-- standard and audio smoke tests pass in `.venv`;
+- untracked fixture/support files are excluded from the release;
 - newspaper and radio Make dry runs pass;
-- S3 bucket, provider/source, langident run ID, and output version are confirmed.
+- S3 bucket, provider/source, and langident run ID are confirmed.
 
 ## Release Commit Plan
 
@@ -46,7 +46,6 @@ Prepare one final release commit containing:
 - `RELEASE_PLAN_v1.1.0_radio.md`
 - `RELEASE_NOTES_v1.1.0.md`
 - documentation/configuration updates needed for radio/audio use
-- any committed test fixtures required for repeatable smoke tests
 
 Suggested commit message:
 
@@ -56,10 +55,14 @@ Prepare release v1.1.0
 
 ## Remaining Verification
 
-Before tagging, run:
+Before tagging, run the newspaper dry run with the checked-in consolidated
+configuration:
 
 ```bash
-make -n newspaper PROVIDER=BL NEWSPAPER=WTCH
+make -n newspaper \
+  CFG=configs/config_consolidatedcanonical_v2025-12-04.mk \
+  PROVIDER=BL \
+  NEWSPAPER=WTCH
 ```
 
 Run the audio dry run again after final documentation/config updates:
@@ -71,36 +74,29 @@ make -n newspaper \
   NEWSPAPER=RTS/ana_media
 ```
 
-If schema compatibility is part of the release acceptance criteria, run the
-standard and audio fixture smoke tests with `--validate`, using the repository
-virtualenv.
-
 Only after dry-run review and explicit bucket/version confirmation, perform any
 S3-affecting run.
 
 ## Required Pre-Tag Work
 
-1. Confirm whether `RUN_VERSION_CONSOLIDATEDCANONICAL` should remain
-   `v2025-12-04` for the radio run or be bumped to a radio-specific consolidated
-   output version before release.
-
-2. Confirm release configuration values.
+1. Confirm remaining release configuration values.
    - `LANGIDENT_ENRICHMENT_RUN_ID ?= langident-lid-ensemble_multilingual_v2-0-3`
-   - `RUN_VERSION_CONSOLIDATEDCANONICAL ?= v2025-12-04`
+   - `RUN_VERSION_CONSOLIDATEDCANONICAL ?= v2025-12-04` confirmed: radio output
+     stays in the same consolidated format/version.
    - `PROVIDER=RTS`
    - `NEWSPAPER=RTS/ana_media`
    - `CANONICAL_INPUT_KIND := audios`
 
-3. Write `RELEASE_NOTES_v1.1.0.md` before tagging.
+2. Write `RELEASE_NOTES_v1.1.0.md` before tagging.
    - Include overview, major features, pipeline changes, configuration,
      verification, migration notes, known issues, and full changelog link.
    - Full changelog link:
      `https://github.com/impresso/impresso-consolidated-canonical-cookbook/compare/v1.0.0...v1.1.0`
 
-4. Add `CHANGELOG.md` or explicitly decide that `RELEASE_NOTES_v1.1.0.md` is the
+3. Add `CHANGELOG.md` or explicitly decide that `RELEASE_NOTES_v1.1.0.md` is the
    release changelog for this first post-`v1.0.0` release.
 
-5. Update user-facing documentation for radio/audio use.
+4. Update user-facing documentation for radio/audio use.
    - Add `CANONICAL_INPUT_KIND := audios`.
    - Document input layout under canonical `audios/`.
    - Document output layout under consolidated `audios/`.
@@ -123,34 +119,14 @@ Result: dry run selected consolidated issue outputs for `ana_media-1996` and
 `ana_media-1997`, and selected consolidated audio stamps under
 `build.d/118-canonical-consolidated-final/v2025-12-04/RTS/ana_media/audios/`.
 
-Audio fixture smoke test passed:
+Newspaper Make dry run with the checked-in `v2025-12-04` configuration passed:
 
 ```bash
-.venv/bin/python lib/cli_consolidatedcanonical.py \
-  --canonical-input test_data/audio_issue.jsonl \
-  --enrichment-input test_data/audio_enrichment.jsonl \
-  --output /private/tmp/output_audio_release_smoke.jsonl \
-  --langident-run-id langident-lid-ensemble_multilingual_v2-0-3 \
-  --log-level INFO
+make -n newspaper \
+  CFG=configs/config_consolidatedcanonical_v2025-12-04.mk \
+  PROVIDER=BL \
+  NEWSPAPER=WTCH
 ```
-
-Result: 1 audio issue processed, 1 content item consolidated, 0 skipped. The
-output kept `sm=audio`, `rc`, `rp`, `rr`, `speakers`, and
-`provided_metadata`, and did not include `olr`.
-
-Standard issue smoke test passed:
-
-```bash
-.venv/bin/python lib/cli_consolidatedcanonical.py \
-  --canonical-input test_data/sample_canonical_issue.jsonl \
-  --enrichment-input test_data/sample_enrichment.jsonl \
-  --output /private/tmp/output_consolidated_release_smoke.jsonl \
-  --langident-run-id langident-lid-ensemble_multilingual_v2-0-2 \
-  --metadata-json metadata/corpus_access_catalogue.json \
-  --log-level INFO
-```
-
-Result: 1 issue processed, 2 content items consolidated, 0 skipped.
 
 Syntax check passed:
 
@@ -177,17 +153,16 @@ changes are:
 - `requirements.txt`
 - `RELEASE_PROCESS.md`
 
-There are currently untracked local fixture/support paths:
+These local fixture/support paths are intentionally excluded from release
+verification and release staging because they are not committed:
 
 - `metadata/`
 - `test_data/`
 - `test.sh`
 - `test_consolidation.sh`
 
-Before tagging, decide whether these are release fixtures that should be tracked
-or local-only files that should remain outside the release commit. The smoke tests
-above use `metadata/` and `test_data/`, so release verification should either
-track the required fixtures or replace the checks with committed fixtures.
+Before tagging, do not stage these paths unless they are separately reviewed and
+committed intentionally.
 
 ## Release Scope
 

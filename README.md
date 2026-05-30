@@ -1,6 +1,6 @@
 # Impresso Consolidated Canonical Processing Pipeline
 
-This repository provides a Make-based processing pipeline for creating consolidated canonical newspaper data within the Impresso project ecosystem. It demonstrates best practices for building scalable, distributed newspaper processing workflows that merge canonical data with language identification and OCR quality assessment enrichments.
+This repository provides a Make-based processing pipeline for creating consolidated canonical newspaper and radio data within the Impresso project ecosystem. It demonstrates best practices for building scalable, distributed workflows that merge canonical data with language identification and OCR quality assessment enrichments.
 
 ## Table of Contents
 
@@ -16,13 +16,13 @@ This repository provides a Make-based processing pipeline for creating consolida
 
 ## Overview
 
-This pipeline consolidates canonical newspaper data with language identification and OCR quality assessment enrichments to produce **consolidated canonical format** as defined in the Impresso schema (`issue.schema.json`).
+This pipeline consolidates canonical newspaper and radio data with language identification and OCR quality assessment enrichments to produce **consolidated canonical format** as defined in the Impresso schema (`issue.schema.json`).
 
 ### What is Consolidation?
 
 Consolidation merges:
 
-- **Canonical newspaper issues** (from `s3://112-canonical-final/`)
+- **Canonical newspaper or radio issues** (from `s3://112-canonical-final/`)
 - **Language identification results** (from `s3://115-canonical-processed-final/langident/`)
 - **OCR quality assessment scores** (included in langident results)
 
@@ -36,7 +36,7 @@ Into a unified format that includes:
 
 ### Pipeline Features
 
-- **Strict Matching**: Requires exact 1:1 correspondence between canonical content items and enrichment data
+- **Partial Enrichment Tolerance**: Preserves content items that do not have enrichment data and logs them
 - **Horizontal Scalability**: Process data across multiple machines without conflicts
 - **Large Dataset Handling**: Efficiently process large collections using S3 and local stamp files
 - **Reproducibility**: Ensure reproducible results with proper dependency management and versioning
@@ -53,19 +53,20 @@ Into a unified format that includes:
    s3://112-canonical-final/PROVIDER/NEWSPAPER/issues/NEWSPAPER-YEAR-issues.jsonl.bz2
    ```
 
-   - Contains newspaper issues with content items (articles, ads, images, etc.)
+   - Contains newspaper or radio issues with content items (articles, ads, images, broadcasts, etc.)
    - Organized by data provider (e.g., BL, SWA, NZZ)
    - Format: JSONL (one issue per line)
 
-2. **Canonical Pages** (`s3://112-canonical-final/`):
+2. **Canonical Pages or Audios** (`s3://112-canonical-final/`):
 
    ```
    s3://112-canonical-final/PROVIDER/NEWSPAPER/pages/NEWSPAPER-YEAR/NEWSPAPER-YEAR-DATE-pages.jsonl.bz2
+   s3://112-canonical-final/PROVIDER/SOURCE/audios/SOURCE-YEAR/SOURCE-YEAR-DATE-audios.jsonl.bz2
    ```
 
-   - Contains page-level newspaper data organized by year directories
+   - Contains page-level newspaper data or audio-level radio data organized by year directories
    - Organized by data provider matching issues structure
-   - Format: JSONL (one page per line)
+   - Format: JSONL (one page or audio record per line)
 
 3. **Langident/OCRQA Enrichments** (`s3://115-canonical-processed-final/`):
    ```
@@ -80,7 +81,7 @@ Into a unified format that includes:
 1. **Data Synchronization**:
 
    - Downloads canonical issues from S3
-   - Downloads canonical pages from S3
+     - Downloads canonical pages or audios from S3
    - Downloads langident/OCRQA enrichments from S3
    - Uses stamp files to track sync status
 
@@ -92,7 +93,7 @@ Into a unified format that includes:
      - Loads all enrichment data into memory
      - Reads each issue line-by-line
      - For each content item:
-       - Validates enrichment data exists (strict matching)
+       - Applies enrichment data when available
        - Renames `lg` → `lg_original`
        - Adds `consolidated_lg`, `consolidated_ocrqa`, `consolidated_langident_run_id`
      - Updates issue-level metadata:
@@ -101,16 +102,16 @@ Into a unified format that includes:
        - Updates `ts` to processing timestamp
      - Writes consolidated issue to output
 
-   **Pages Processing:**
+   **Pages or Audios Processing:**
 
-   - For each year of pages:
-     - Copies all page files from canonical S3 to consolidated S3
+   - For each year of pages or audios:
+     - Copies all page or audio files from canonical S3 to consolidated S3
      - Preserves directory structure and organization
      - Future versions may integrate additional data (e.g., ReOCR results)
 
 3. **Output Upload**:
    - Uploads consolidated canonical issues to S3
-   - Uploads consolidated canonical pages to S3
+   - Uploads consolidated canonical pages or audios to S3
    - Preserves logs for troubleshooting
 
 ### Output Data
@@ -136,6 +137,17 @@ s3://118-canonical-consolidated-final/VERSION/PROVIDER/NEWSPAPER/pages/NEWSPAPER
 - Schema: Conforms to canonical pages schema
 - Versioning: Uses same VERSION as issues
 - Organization: Mirrors canonical pages structure with VERSION prefix
+
+**Consolidated Canonical Audios** (`s3://118-canonical-consolidated-final/`):
+
+```
+s3://118-canonical-consolidated-final/VERSION/PROVIDER/SOURCE/audios/SOURCE-YEAR/SOURCE-YEAR-DATE-audios.jsonl.bz2
+```
+
+- Format: JSONL (one audio record per line)
+- Schema: Conforms to canonical audio record structure
+- Versioning: Uses same VERSION as issues
+- Organization: Mirrors canonical audios structure with VERSION prefix
 
 ## Quick Start
 
@@ -285,6 +297,14 @@ RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-11-23_production
 LOGGING_LEVEL := INFO
 COLLECTION_JOBS := 8
 MAX_LOAD := 16
+
+# config.rts-audio.mk - RTS radio audio consolidation
+PROVIDER := RTS
+NEWSPAPER := RTS/ana_media
+NEWSPAPER_FNMATCH := RTS/ana_media
+CANONICAL_INPUT_KIND := audios
+LANGIDENT_ENRICHMENT_RUN_ID := langident-lid-ensemble_multilingual_v2-0-3
+RUN_VERSION_CONSOLIDATEDCANONICAL := v2025-12-04
 ```
 
 See `config.sample.mk` for a complete list of configurable variables.
@@ -321,6 +341,7 @@ These can be set in `.env` as shell variables or passed as command arguments to 
 
 - `USE_CANONICAL`: Always set to `1` for consolidated canonical processing (default: `1`)
 - `NEWSPAPER_HAS_PROVIDER`: Set to `1` if data organized as `PROVIDER/NEWSPAPER` (default: `1`)
+- `CANONICAL_INPUT_KIND`: Selects canonical record kind for copying (`pages`, `audios`, or `auto`; default: `auto`)
 - `NEWSPAPER_FNMATCH`: Pattern to filter newspapers for collection processing
   - Examples: `BL/*` (all BL newspapers), `SWA/*`, `*/WTCH`, `BL/AATA`
   - Leave empty to process all newspapers
@@ -374,6 +395,21 @@ Process a newspaper to consolidate its canonical data with enrichments:
 # Process a specific newspaper (PROVIDER and NEWSPAPER required)
 make newspaper PROVIDER=BL NEWSPAPER=WTCH
 ```
+
+### Process A Radio Source
+
+Process an RTS radio source with the checked-in audio configuration:
+
+```bash
+make newspaper \
+  CFG=configs/config_consolidatedcanonical_v2026-05-26_audio.mk \
+  PROVIDER=RTS \
+  NEWSPAPER=RTS/ana_media
+```
+
+This configuration uses canonical `audios/` records, langident/OCRQA enrichment
+`langident-lid-ensemble_multilingual_v2-0-3`, and consolidated output version
+`v2025-12-04`.
 
 ### Step-by-Step Processing
 
@@ -448,13 +484,14 @@ make clean-build
 
 ## Data Requirements
 
-### Strict Matching Policy
+### Enrichment Matching Policy
 
-The consolidation pipeline implements **strict matching**:
+The consolidation pipeline applies enrichment data when available:
 
-- Every content item in a canonical issue **MUST** have corresponding enrichment data
-- If any content item is missing from the enrichment file, processing **exits with an error**
-- This ensures data consistency and prevents partial consolidation
+- Content items with matching enrichment receive consolidated language, OCRQA,
+  character length, and enrichment provenance fields.
+- Content items without enrichment are preserved and logged.
+- Image content items are skipped for consolidation fields.
 
 ### Expected Data Structure
 
