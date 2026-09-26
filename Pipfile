@@ -12,7 +12,6 @@ impresso-cookbook = {editable = true, path = "./cookbook/lib", version="1.0.3"}
 python-dotenv = "*"  # Load environment variables from .env files
 
 # HTTP and file handling
-requests = "*"  # HTTP library for making API requests
 smart-open = {extras = ["s3","http"], version = "==6.4"}  # Unified file I/O for local and cloud storage
 
 # Cloud services
@@ -28,6 +27,9 @@ pipenv = "*"  # Python dependency management
 [dev-packages]
 # Jupyter development
 ipykernel = "*"  # Jupyter kernel for Python
+
+# Debugging helpers
+requests = "*"  # HTTP library for ad hoc IIIF/API inspection
 
 
 [requires]
