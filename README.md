@@ -206,11 +206,22 @@ brew install make git git-lfs parallel coreutils python3 awscli
 3. **Install Python dependencies:**
 
    ```bash
-   # Using pipenv (recommended)
+   # Using pipenv (recommended); creates .venv because .env sets PIPENV_VENV_IN_PROJECT=enabled
    pipenv install
 
-   # Or using pip directly
+   # Or, inside an activated venv of your choice
    python3 -m pip install -r requirements.txt
+   ```
+
+   Make uses the interpreter in `PYTHON`, resolved once in `make_settings.mk`:
+   an explicit `PYTHON=...` wins, then an activated venv (`pipenv shell` or
+   `pipenv run make`), then the project-local `.venv`, then `python3`. With
+   `PIPENV_VENV_IN_PROJECT=enabled` (set in `dotenv.sample`), `pipenv install`
+   creates `.venv`, so plain `make` works without activating anything. Check the
+   choice with:
+   
+   ```bash
+   make check-python-env
    ```
 
 4. **Initialize the environment:**

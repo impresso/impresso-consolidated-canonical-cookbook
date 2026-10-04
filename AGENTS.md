@@ -121,6 +121,10 @@ paths in new make rules.
 
 ## Python Conventions
 
+Make recipes call Python as `$(PYTHON)`, which `cookbook/make_settings.mk`
+resolves (explicit override, activated venv, project `.venv`, then `python3`).
+Run `remake check-python-env` when the interpreter is in doubt.
+
 Keep Python changes compatible with the existing CLI style:
 
 - standard `argparse` CLIs;
