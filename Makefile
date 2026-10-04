@@ -36,20 +36,37 @@ endif
 #: Show help message
 help::
 	@echo "Makefile for consolidated canonical processing"
+	@echo ""
 	@echo "Usage: make <target> PROVIDER=<provider> NEWSPAPER=<newspaper>"
-	@echo "Targets:"
-	@echo "  setup                 # Prepare the local directories"
-	@echo "  collection            # Process multiple newspapers in parallel"
-	@echo "  all                   # Sync data and process all years of a single newspaper"
-	@echo "  newspaper             # Process a single newspaper for all years"
-	@echo "  sync                  # Sync input data (canonical + langident enrichments)"
-	@echo "  sync-input            # Sync only input data"
-	@echo "  sync-output           # Sync output data from S3"
-	@echo "  resync                # Remove local sync stamps and sync again"
-	@echo "  clean-build           # Remove the entire build directory"
-	@echo "  clean-newspaper       # Remove local directory for a single newspaper"
-	@echo "  help                  # Show this help message"
-	@echo "  help-orchestration    # Show detailed orchestration and parallelization help"
+	@echo ""
+	@echo "MAIN TARGETS:"
+	@echo "  make newspaper            # Sync and process a single newspaper for all years"
+	@echo "  make collection           # Process multiple newspapers in parallel"
+	@echo "  make all                  # Force input/output resync, then process a single newspaper"
+	@echo "  make setup                # Prepare the local directories"
+	@echo "  make sync                 # Sync input (canonical + langident enrichments) and output data"
+	@echo "  make sync-input           # Sync only input data"
+	@echo "  make sync-output          # Sync only output data from S3"
+	@echo "  make resync               # Remove local sync stamps and sync again"
+	@echo "  make clean-build          # Remove the entire build directory"
+	@echo ""
+	@echo "REQUIRED VARIABLES:"
+	@printf '  %-24s %s\n' 'PROVIDER=$(PROVIDER)' 'Data provider organization (e.g., BL, SWA, NZZ)'
+	@printf '  %-24s %s\n' 'NEWSPAPER=$(NEWSPAPER)' 'Newspaper to process (e.g., WTCH, actionfem)'
+	@echo ""
+	@echo "CONFIGURATION:"
+	@echo "  make newspaper CFG=config.prod.mk PROVIDER=BL NEWSPAPER=WTCH  # Use a custom configuration file"
+	@echo ""
+	@echo "MORE HELP:"
+	@echo "  make help-orchestration   # Collection runs, parallelization, tuning, S3 deletion preview"
+	@echo "  make help-sync            # Sync targets and S3 refresh behavior"
+	@echo "  make help-processing      # Processing entry point and flags"
+	@echo "  make help-setup           # Python environment setup"
+	@echo "  make help-clean           # Clean targets"
+	@echo "  make help-aws             # AWS CLI setup and S3 folder moves"
+	@echo "  make help-newspaper-list  # Collection list generation"
+	@echo "  make help-path-variables  # Resolved S3 and local paths"
+	@echo ""
 
 # Default target when no target is specified on the command line
 .DEFAULT_GOAL := help
@@ -109,17 +126,3 @@ include cookbook/local_to_s3.mk
 # configure for aws client access
 include cookbook/aws.mk
 
-# Add help target with configuration documentation
-help::
-	@echo ""
-	@echo "CONFIGURATION:"
-	@echo "  Use CFG=<file> to specify a custom configuration file"
-	@echo "  Example: make newspaper CFG=config.prod.mk PROVIDER=BL NEWSPAPER=WTCH"
-	@echo ""
-	@echo "REQUIRED VARIABLES:"
-	@echo "  PROVIDER          #  Data provider organization (e.g., BL, SWA, NZZ)"
-	@echo "  NEWSPAPER         #  Target newspaper to process (e.g., WTCH, actionfem)"
-	@echo ""
-	@echo "For detailed information about processing configuration, parallelization,"
-	@echo "performance tuning, and examples, run: make help-orchestration"
-	@echo ""
