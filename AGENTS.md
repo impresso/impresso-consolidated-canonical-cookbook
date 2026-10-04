@@ -9,8 +9,20 @@ wires the shared `cookbook/` make fragments to merge canonical issue data with
 langident/OCRQA enrichments and copy canonical page data into consolidated
 canonical output locations.
 
-There is also a `cookbook/AGENT.md` for the reusable cookbook layer. Follow that
+There is also a `cookbook/AGENTS.md` for the reusable cookbook layer. Follow that
 file when editing generic cookbook fragments or helpers under `cookbook/`.
+
+## Cookbook Submodule Commits
+
+The cookbook is normally checked out by this repository at a pinned commit,
+which leaves its `HEAD` detached. Do not commit inside `cookbook/` while its
+`HEAD` is detached. Switch to `main` or create a feature branch in the cookbook
+first, then commit there and update this repository's submodule pointer.
+
+Each repository that uses the cookbook as a submodule should enforce this rule
+with the cookbook's `.githooks/pre-commit` hook. Configure the cookbook checkout
+to use that hooks directory with `git -C cookbook config core.hooksPath .githooks`.
+Git does not activate a tracked hooks directory automatically.
 
 ## Command Policy
 
