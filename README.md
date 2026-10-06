@@ -493,6 +493,32 @@ make config
 make clean-build
 ```
 
+## Checking Collection Completeness
+
+After processing, audit the expected S3 artifacts using the same configuration:
+
+```bash
+make check-collection-completeness CFG=configs/config_consolidatedcanonical_v2025-11-23_initial.mk
+make check-newspaper-completeness CFG=configs/config_consolidatedcanonical_v2025-11-23_initial.mk PROVIDER=BL NEWSPAPER=WTCH
+make help-completeness
+```
+
+The collection audit uses the existing `NEWSPAPERS_TO_PROCESS_FILE`. To restrict a
+single newspaper to selected years, add `NEWSPAPER_YEARS="1900 1901"` in provider
+mode. Configuration supplies the input/output buckets, run version, langident
+root, selected content kind, and lock age threshold.
+
+Reports default to `build.d/reports/completeness/consolidatedcanonical`. Override
+`COMPLETENESS_REPORT_DIR` for concurrent audits or to preserve separate reports.
+Use `COMPLETENESS_STREAMS=pages` for a page-only audit and
+`COMPLETENESS_CONCURRENCY=4` to limit parallel inventories.
+
+These targets read S3 and write local JSON/TSV reports without syncing or repairing
+anything. Coverage checks expected keys and nonzero sizes; it does not certify
+JSONL records or schema validity. A failing Make command can mean gaps or an audit
+error: the report's `exit_code` distinguishes complete (`0`), gaps/blockers (`1`),
+and errors (`2`). Automatic repair remains unavailable.
+
 ## Data Requirements
 
 ### Enrichment Matching Policy

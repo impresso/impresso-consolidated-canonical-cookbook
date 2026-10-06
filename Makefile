@@ -117,6 +117,11 @@ include cookbook/clean.mk
 include cookbook/processing.mk
 include cookbook/processing_consolidatedcanonical.mk
 
+# Explicit task selection belongs to this pipeline, not shared path fragments.
+COMPLETENESS_TASK ?= consolidatedcanonical
+  $(call log.info, COMPLETENESS_TASK)
+include cookbook/completeness.mk
+
 
 # FUNCTION
 include cookbook/local_to_s3.mk
